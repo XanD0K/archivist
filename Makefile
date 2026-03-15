@@ -1,11 +1,74 @@
-INCLUDE_DIR = include  # .h files
-ODIR = obj             # .o files
-SRCDIR = src           # .c files
-BINDIR = bin           # executable
+# ====================================== DIRECTORIES ======================================
+SRCDIR = src 		# .c files
+IDIR   = include	# .h files
+ODIR   = obj		# .o files
+BINDIR = bin		# executable
 
-CC = clang
-CPPFLAGS = -I$(INCLUDE_DIR)
-CFLAGS = 
+# ========================================= FLAGS =========================================
+CC       = clang
+CPPFLAGS = -I$(IDIR)
+DEPFLAGS = -MMD -MP
+CPPFLAGS += $(DEPFLAGS)
+CFLAGS   = -Wall -Wextra -Wpedantic -Werror -Werror=return-type \
+		   -Weverything -Wno-padded -Wconversion -Wshadow -Wnull-dereference \
+		   -Wformat-security -Wunused-function -Wunused-variable\
+		   -std=c11 -O2 -g -fcolor-diagnostics
 
+# ====================================== SOURCE FILES =====================================
+TARGET = archivist
+SRC := $(wildcard $(SRCDIR)/*.c)
+OBJ = $(addprefix $(ODIR)/,$(notdir $(SRC:.c=.o)))
+EXE = $(BINDIR)/$(TARGET)
 
+# ====================================== BUILD RULES ======================================
+# Automatically creates directories for .o files and executable
+$(ODIR) $(BINDIR):
+	@mkdir -p $@
 
+# Converts .c files into .o files
+$(ODIR)/%.o: $(SRCDIR)/%.c | $(ODIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+
+# Main Rule
+$(EXE): $(OBJ) | $(BINDIR)
+	$(CC) $(CFLAGS) $^ -o $@
+
+# ======================================== TARGETS ========================================
+# Builds executable
+all: $(EXE)
+
+# Cleans .o files, executable, and respective directories
+clean:
+	rm -rf $(ODIR) $(BINDIR)
+
+# Cleans and rebuilds
+rebuild: clean all
+
+# Builds and Runs executable
+run: $(EXE)
+	./$(EXE)
+
+# Creates executable for debug
+debug:
+	$(MAKE) CFLAGS="$(CFLAGS) -g -O0 -fsanitize=address,leak" all
+
+# Creates optimized version of executable
+release:
+	$(MAKE) CFLAGS="-std=c11 -O3 -DNDEBUG" all
+
+# Shows available commands
+help:
+	@echo "=== AVAILABLE COMMANDS ==="
+	@echo "make               → compiles program"
+	@echo "make clean         → erases .o files and executable"
+	@echo "make debug         → compiles w/ debug (-g -O0)"
+	@echo "make help          → shows this help"
+	@echo "make rebuild       → cleans and recompiles"
+	@echo "make release       → compiles w/ optimization (-O3)"
+	@echo "make run           → compiles and executes"
+
+# States false targets
+.PHONY: all clean rebuild run debug release help
+
+# Converts .o files into dependecy files (.d)
+-include $(OBJ:.o=.d)
