@@ -15,7 +15,7 @@
 
 **Challenges**
 - Didn't know how to build a Makefile
-- Didn't know nothing about its syntaxes, and organization - e.g. wildcard, dependecy files (.d), targets
+- Didn't know nothing about its syntaxes, and organization - e.g. wildcard, dependecy files (.d), targets, variables, flags
 
 **Progress**
 - Spent the last 3 days studying Makefile:
