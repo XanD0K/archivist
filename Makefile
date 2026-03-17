@@ -1,41 +1,57 @@
 # ====================================== DIRECTORIES ======================================
-SRCDIR = src 		# .c files
-IDIR   = include	# .h files
-ODIR   = obj		# .o files
-BINDIR = bin		# executable
+
+# .c files
+SRCDIR = src
+# .h files
+IDIR   = include
+# .o files
+ODIR   = obj
+# executable
+BINDIR = bin
 
 # ========================================= FLAGS =========================================
+
 CC       = clang
 CPPFLAGS = -I$(IDIR)
 DEPFLAGS = -MMD -MP
 CPPFLAGS += $(DEPFLAGS)
 CFLAGS   = -Wall -Wextra -Wpedantic -Werror -Werror=return-type \
-		   -Weverything -Wno-padded -Wconversion -Wshadow -Wnull-dereference \
+		   -Wno-padded -Wconversion -Wshadow -Wnull-dereference \
 		   -Wformat-security -Wunused-function -Wunused-variable\
 		   -std=c11 -O2 -g -fcolor-diagnostics
 
 # ====================================== SOURCE FILES =====================================
+
 TARGET = archivist
 SRC := $(wildcard $(SRCDIR)/*.c)
 OBJ = $(addprefix $(ODIR)/,$(notdir $(SRC:.c=.o)))
 EXE = $(BINDIR)/$(TARGET)
 
 # ====================================== BUILD RULES ======================================
-# Automatically creates directories for .o files and executable
-$(ODIR) $(BINDIR):
+
+# Creates directory for .o files
+$(ODIR):
+	@mkdir -p $@
+
+# Creates directory for executable
+$(BINDIR):
 	@mkdir -p $@
 
 # Converts .c files into .o files
 $(ODIR)/%.o: $(SRCDIR)/%.c | $(ODIR)
-	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+	@$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 
 # Main Rule
 $(EXE): $(OBJ) | $(BINDIR)
-	$(CC) $(CFLAGS) $^ -o $@
+	@$(CC) $(CFLAGS) $^ -o $@
 
 # ======================================== TARGETS ========================================
+
 # Builds executable
 all: $(EXE)
+
+# Allows 'make archivist' command
+archivist: all
 
 # Cleans .o files, executable, and respective directories
 clean:
