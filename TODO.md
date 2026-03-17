@@ -6,7 +6,6 @@
 - [ ] Implements iterative implementation when `argc == 1`
 - [ ] Validates commands and arguments
 
-
 ## Refactoring tasks
 
 
