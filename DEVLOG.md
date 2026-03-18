@@ -1,12 +1,21 @@
 # Development Log
 
-## [DATE]
+## [2026-03-17]
 **Plans**
+- Implements commands and arguments verification
 
 **Challenges**
+- Find the best way to make validations
+- Segregate validation from `main.c`, keeping it cleaner
+- Implement Dispatch Table
 
 **Progress**
-
+- First implemented validation in `main.c`, with auxiliar functions in `utils.c`
+- Implemented Binary Search (`bsearch()`) in an array to search for command's index, and used `switch()` to improve validation
+- Switched to a Dispatch Table, which included name, command (function) and minimum and maximum number of arguments
+- Fully implemented command and arguments validation by using Dispatch Table
+- Fully customized error messages (`errno` and `fprintf(stderr, ...)`)
+- Segregated commands logic into a segregate file (`commands.c`), keeping `main.c` cleaner
 
 
 ## [2026-03-15]
