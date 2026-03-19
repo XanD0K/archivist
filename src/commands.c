@@ -1,4 +1,3 @@
-#include <dirent.h>
 #include <errno.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -6,10 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <sys/stat.h>
 
-# include "commands.h"
-# include "utils.h"
+#include "commands.h"
+#include "utils.h"
 
 // Prototypes
 static ptrdiff_t validate_command(const char *cmd);
@@ -35,9 +33,17 @@ const CommandEntry cmd_table[] =
     {NULL, NULL, 0, 0}
 };
 
+// Validades and executes commands
 int execute_command(int argc, char **argv)
 {
-    // Validates command by getting its index in the array
+    if (argc < 2)
+    {        
+        fprintf(stderr, "Usage: ./archivist COMMAND [arguments...]\n,"
+                        "Check available commands with: ./archivist help\n");
+        return 1;
+    }
+
+    // Checks if command if valid
     ptrdiff_t index = validate_command(argv[1]);
     if (index == -1)
     {
@@ -46,7 +52,7 @@ int execute_command(int argc, char **argv)
         return 2;
     }
 
-    // Checks if correct number of arguments
+    // Checks number of arguments
     if (!validate_args(argc, index))
     {
         return 3;
@@ -77,10 +83,16 @@ int execute_command(int argc, char **argv)
         {
             return 6;
         }
-    }
+
+        const int handler_result = cmd_table[index].handler(argc, argv, &st, dir_src);
+
+        closedir(dir_src);
+        return handler_result;
+
+    }    
 }
 
-// Tries to get command's index w/ binary search
+// Tries to get command's index
 static ptrdiff_t validate_command(const char *cmd)
 {
     // Gets size of array
@@ -89,7 +101,7 @@ static ptrdiff_t validate_command(const char *cmd)
     // Binary Search in the array
     const CommandEntry *result = bsearch(cmd, cmd_table, len, sizeof(CommandEntry), str_cmp);
     
-    // Returns -1 if invalid command, otherwise command's index
+    // Returns -1 if invalid command, otherwise returns command's index
     return (result == NULL) ? -1 : result - cmd_table;
 }
 
@@ -101,7 +113,7 @@ static int str_cmp(const void *a, const void *b)
     return strcasecmp(cmd_name, e->name);
 }
 
-// Checks if correct number of arguments for each command
+// Checks correct number of arguments for each command
 static bool validate_args(int argc, ptrdiff_t index)
 {
     const char *cmd = cmd_table[index].name;
@@ -186,10 +198,5 @@ static bool check_args_count(int argc, ptrdiff_t index)
     int min = cmd_table[index].min_args;
     int max = cmd_table[index].max_args;
 
-    if (argc < min || argc > max)
-    {
-        return false;
-    }
-
-    return true;
+    return (argc >= min || argc <= max);
 }
