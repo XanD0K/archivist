@@ -2,35 +2,40 @@
 
 
 ## New features
-- [ ] Implements `list` feature
-- [ ] `list` feature → implements comparation functions for name and version, and get rid of `alphasort` and `versionsort`
-- [ ] `list` feature → improves `cmp_*()` functions with S_ISDIR()
-- [ ] `list` feature → allows `argv[4]` as ASC and DESC order
-- [ ] `list` feature → also prints in horizontal direction (just like `ls` command)
-- [ ] `list` feature → implements `check_element()` function to update `f_counter`, `dir_counter`, `slink_counter` and `total_size` variables 
-- [ ] Implements `rename` feature
-- [ ] Implements `backup` feature
-- [ ] Implements `tree` feature
-- [ ] Implements `help` feature
-- [ ] Implements `log` feature
-- [ ] Implements `search` feature
-- [ ] Implements `delete` feature
-- [ ] Implements `duplicate` feature
-- [ ] Implements `move` feature
-- [ ] Implements `report` feature
-- [ ] Implements `restore` feature
+- [ ] Implement `list` feature
+- [-] `list` feature → implement comparation functions for name and version, and get rid of `alphasort` and `versionsort`
+- [ ] `list` feature → also prints in horizontal direction (just like `ls` command) 
+- [ ] Implement `rename` feature
+- [ ] Implement `backup` feature
+- [ ] Implement `tree` feature
+- [ ] Implement `help` feature
+- [ ] Implement `log` feature
+- [ ] Implement `search` feature
+- [ ] Implement `delete` feature
+- [ ] Implement `duplicate` feature
+- [ ] Implement `move` feature
+- [ ] Implement `report` feature
+- [ ] Implement `restore` feature
+- [ ] Auxiliar function to get full path from a file/directory
+
 
 ## Refactoring tasks
-- [ ] Changes `validade_command` to use `for` loop instead of `bsearch()`
+- [ ] Change `validade_command` to use `for` loop instead of `bsearch()`
+- [ ] Merge `search` feature into `list` → `list` will behave like `ls` command
+- [ ] Use `getopt()` to allow flexible CLI
+
 
 ## Testing
 
 
 ## BACKLOG
-- [-] Implements iterative implementation when `argc == 1`
+- [-] Implement iterative implementation when `argc == 1`
+
 
 ## DONE
-- [x] Creates Makefile
-- [x] Validates commands and arguments
-- [x] Improves commands and arguments verification by using Dispatch Table
-- [x] `list` feature → implements comparation functions for sorting method
+- [x] Create Makefile
+- [x] Validate commands and arguments
+- [x] Improve commands and arguments verification by using Dispatch Table
+- [x] `list` feature → implement comparation functions for sorting method
+- [x] `list` feature → implement `check_element()` function to update `f_counter`, `dir_counter`, `slink_counter` and `total_size` variables
+- [x] `list` feature → allow `argv[4]` as ASC and DESC order

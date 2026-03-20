@@ -22,7 +22,7 @@ const CommandEntry cmd_table[] =
     {"delete", handle_delete, 3, 4},
     {"duplicate", handle_duplicate, 3, 3},
     {"help", handle_help, 2, 2},
-    {"list", handle_list, 3, 4},
+    {"list", handle_list, 3, 6},
     {"log", handle_log, 2, 2},
     {"move", handle_move, 4, 5},
     {"rename", handle_rename, 3, 5},
@@ -77,19 +77,10 @@ int execute_command(int argc, char **argv)
             return 5;
         }
 
-        // Opens directory
-        DIR *dir_src = open_directory(argv[2]);
-        if (dir_src == NULL)
-        {
-            return 6;
-        }
+        const int handler_result = cmd_table[index].handler(argc, argv);
 
-        const int handler_result = cmd_table[index].handler(argc, argv, &st, dir_src);
-
-        closedir(dir_src);
         return handler_result;
-
-    }    
+    }
 }
 
 // Tries to get command's index
@@ -128,19 +119,11 @@ static bool validate_args(int argc, ptrdiff_t index)
                 fprintf(stderr, "Usage: ./archivist %s DIRECTORY [order]\n", cmd);
                 break;
             }
-            // Delete / List / Search
+            // Delete / Search
             case 1:
-            case 4:
             case 10:
             {
-                if (strcasecmp(cmd, "list") == 0)
-                {
-                    fprintf(stderr, "Usage: ./archivist %s DIRECTORY [order]\n", cmd);
-                }
-                else
-                {
-                    fprintf(stderr, "Usage: ./archivist %s DIRECTORY [name/extension/type]\n", cmd);
-                }
+                fprintf(stderr, "Usage: ./archivist %s DIRECTORY [name|extension|type]\n", cmd);
                 break;
             }
             // Duplicate / Report / Tree
@@ -158,13 +141,19 @@ static bool validate_args(int argc, ptrdiff_t index)
                 fprintf(stderr, "Usage: ./archivist %s\n", cmd);
                 break;
             }
+            // List
+            case 4:
+            {
+                fprintf(stderr, "Usage: ./archivist %s DIRECTORY [sort] [asc|desc] [-r|--recursive]\n", cmd);
+                break;
+            }
             // Move / Restore
             case 6:
             case 9:
             {
                 if (strcasecmp(cmd, "move") == 0)
                 {
-                    fprintf(stderr, "Usage: ./archivist %s SRC_DIRECTORY DEST_DIRECTORY [name/extension/type/size]\n", cmd);
+                    fprintf(stderr, "Usage: ./archivist %s SRC_DIRECTORY DEST_DIRECTORY [name|extension|type|size]\n", cmd);
                 }
                 else
                 {

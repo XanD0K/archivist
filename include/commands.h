@@ -5,7 +5,7 @@
 #include <sys/stat.h>
 
 // Type/Alias
-typedef int (*CommandHandler)(int argc, char **argv, struct stat *st, DIR *dir);
+typedef int (*CommandHandler)(int argc, char **argv);
 typedef int (*SortFunc)(const struct dirent **a, const struct dirent **b);
 
 // Structure for each command in the table
@@ -23,7 +23,7 @@ int handle_backup(int argc, char **argv);
 int handle_delete(int argc, char **argv);
 int handle_duplicate(int argc, char **argv);
 int handle_help(int argc, char **argv);
-int handle_list(int argc, char **argv, struct stat *st, DIR *dir);
+int handle_list(int argc, char **argv);
 int handle_log(int argc, char **argv);
 int handle_move(int argc, char **argv);
 int handle_rename(int argc, char **argv);
