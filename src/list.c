@@ -26,7 +26,6 @@ static void check_element(struct dirent **namelist, const char *current_path, si
                           size_t *total_size, SortFunc sorter, ListOptions opts);
 static ListOptions parse_list_opts(int argc, char **argv);
 
-
 // Globals
 static const char *sorts[] = {"date", "name", "size", "type", "version"};
 char *base_dir = NULL;

@@ -37,7 +37,7 @@
 - [x] Validate commands and arguments
 - [x] Improve commands and arguments verification by using Dispatch Table
 - [x] `list` feature → implement comparation functions for sorting method
-- [x] `list` feature → implement `check_element()` function to update `f_counter`, `dir_counter`, `slink_counter` and `total_size` variables
+- [x] `list` feature → implement `check_element()` function to update `f_counter`, `dir_counter`, `slink_counter`, `error_counter` and `total_size` variables
 - [x] `list` feature → allow `argv[4]` as ASC and DESC order
 - [x] Descentralize `commands.h` and create a `.h` file for each functionality
-- [x] Use `getopt()` to allow flexible CLA
+- [x] Use `getopt_long()` to allow flexible CLI arguments

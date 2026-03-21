@@ -1,5 +1,20 @@
 # Development Log
 
+
+## [2026-03-20]
+**Plans**
+- Improves CLI arguments validations
+- Implements `list` feature
+
+**Challenges**
+- Learn how to use `getopt_long()` to allow multiple flags in no fixed order and a better flags parsing/validation
+
+**Progress**
+- Changed from manual CLI arguments parser and validation to an implementation that uses `getopt_long()`
+- 
+
+
+
 ## [2026-03-17]
 **Plans**
 - Implements commands and arguments verification
