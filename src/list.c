@@ -16,15 +16,15 @@
 
 // Prototypes
 static void print_list_help(void);
-static ListOptions parse_list_opts(int argc, char **argv);
+static ListOptions parse_list_opts(int argc, char **argv, int opt_start);
 static bool check_sort(char *sort);
 static SortFunc get_sort_func(char *order);
 static int cmp_name(const struct dirent **a, const struct dirent **b);
 static int cmp_date(const struct dirent **a, const struct dirent **b);
 static int cmp_size(const struct dirent **a, const struct dirent **b);
 static int cmp_type(const struct dirent **a, const struct dirent **b);
-static int check_is_dir(const struct dirent **a, const struct dirent **b);
-static void check_element(struct dirent **namelist, const char *current_path, size_t *f_counter,
+static int check_is_dir (const struct dirent *a, const struct dirent *b);
+static void check_element(struct dirent *namelist, const char *current_path, size_t *f_counter,
                           size_t *dir_counter, size_t *slink_counter, size_t *err_counter,
                           size_t *total_size, SortFunc sorter, ListOptions opts);
 
@@ -47,16 +47,29 @@ int handle_list(int argc, char **argv)
         print_list_help();
         return 0;
     }
+    
+    const char *dir_path = NULL;
+    int opt_start = 0;    
+
+    if (argc >= 3 && argv[2][0] != '-')
+    {
+        dir_path = argv[2];
+        opt_start = 3;
+    }
+    else
+    {
+        opt_start = 2;
+    }
 
     // Gets valid directory (default: .)
-    base_dir = get_valid_directory(argv[2]);
+    base_dir = get_valid_directory(dir_path);
     if (!base_dir)
     {
         return 4;
     }
 
     // Parses CLI arguments
-    ListOptions opts = parse_list_opts(argc, argv);
+    ListOptions opts = parse_list_opts(argc, argv, opt_start);
 
     reverse = (opts.reverse) ? -1 : 1;
     dir_first = opts.dir_first;
@@ -128,37 +141,37 @@ int handle_list(int argc, char **argv)
 static void print_list_help(void)
 {
     puts(
-    "Usage: ./archivist list DIRECTORY [FLAGS]\n"
-    "\n"
-    "Flags:\n"
-    "   -o, --order <date|name|size|type|version>\n"
-    "       Sorts output\n"
-    "       Default: name\n"
-    "   -r, --reverse\n"
-    "       Changes order (ascending | descending)\n"
-    "       Default: asc\n"
-    "   -R, --recursive\n"
-    "       Also lists subdirectories\n"
-    "       Default: off\n"
-    "   --dir-first\n"
-    "       Directories before files\n"
-    "       Default: off\n"
-    "   --case-sensitive\n"
-    "       Distinguish case\n"
-    "       Default: off\n"
-    "\n"
-    "Examples:\n"
-    "./archivist list /folder\n"
-    "./archivist list /folder -o size -R\n"
-    "./archivist list /folder --dir-first --recursive --reverse\n"
-    "./archivist list /folder --case-sensitive --order version\n"
-    "\n"
-    "All commands: ./archivist help"
+        "Usage: ./archivist list DIRECTORY [FLAGS]\n"
+        "\n"
+        "Flags:\n"
+        "   -o, --order <date|name|size|type|version>\n"
+        "       Sorts output\n"
+        "       Default: name\n"
+        "   -r, --reverse\n"
+        "       Changes order (ascending | descending)\n"
+        "       Default: asc\n"
+        "   -R, --recursive\n"
+        "       Also lists subdirectories\n"
+        "       Default: off\n"
+        "   --dir-first\n"
+        "       Directories before files\n"
+        "       Default: off\n"
+        "   --case-sensitive\n"
+        "       Distinguish case\n"
+        "       Default: off\n"
+        "\n"
+        "Examples:\n"
+        "./archivist list /folder\n"
+        "./archivist list /folder -o size -R\n"
+        "./archivist list /folder --dir-first --recursive --reverse\n"
+        "./archivist list /folder --case-sensitive --order version\n"
+        "\n"
+        "All commands: ./archivist help"
     );
 }
 
 // Parses through CLI arguments
-static ListOptions parse_list_opts(int argc, char **argv)
+static ListOptions parse_list_opts(int argc, char **argv, int opt_start)
 {
     // Declares structure
     ListOptions opts = {0};
@@ -182,7 +195,7 @@ static ListOptions parse_list_opts(int argc, char **argv)
     char *shor_opts = "o:rR";
 
     // Skips command and directory in CLI arguments
-    optind = 2;
+    optind = opt_start;
 
     while ((opt = getopt_long(argc, argv, shor_opts, long_opts, &long_index)) != -1)
     {
@@ -239,7 +252,7 @@ static bool check_sort(char *sort)
 {
     size_t sorts_len = sizeof(sorts) / sizeof(sorts[0]);
 
-    for (int i = 0; i < sorts_len; i++)
+    for (size_t i = 0; i < sorts_len; i++)
     {
         if (strcasecmp(sort, sorts[i]) == 0)
         {
@@ -383,10 +396,10 @@ static int cmp_type(const struct dirent **a, const struct dirent **b)
 }
 
 // Helper function that puts directories before files
-static int check_is_dir (const struct dirent **a, const struct dirent **b)
+static int check_is_dir (const struct dirent *a, const struct dirent *b)
 {
-    int is_dir_a = ((*a)->d_type == DT_DIR);
-    int is_dir_b = ((*b)->d_type == DT_DIR);
+    int is_dir_a = (a->d_type == DT_DIR);
+    int is_dir_b = (b->d_type == DT_DIR);
 
     // Folders before files
     if (is_dir_a != is_dir_b)
@@ -399,41 +412,41 @@ static int check_is_dir (const struct dirent **a, const struct dirent **b)
 }
 
 // Traverses through every element and updates counters
-static void check_element(struct dirent **namelist, const char *current_path, size_t *f_counter,
+static void check_element(struct dirent *namelist, const char *current_path, size_t *f_counter,
                           size_t *dir_counter, size_t *slink_counter, size_t *err_counter,
                           size_t *total_size, SortFunc sorter, ListOptions opts)
 {
-    if (strcmp((*namelist)->d_name, ".") == 0 || strcmp((*namelist)->d_name, "..") == 0)
+    if (strcmp(namelist->d_name, ".") == 0 || strcmp(namelist->d_name, "..") == 0)
     {
         return;
     }
     
     struct stat st;
     char new_path[PATH_MAX];
-    snprintf(new_path, sizeof(new_path), "%s/%s", current_path, (*namelist)->d_name);
+    snprintf(new_path, sizeof(new_path), "%s/%s", current_path, namelist->d_name);
     
     if (stat(new_path, &st) != 0)
     {
         fprintf(stderr, "Couldn't access %s: %s\n", new_path, strerror(errno));
-        *err_counter++;
+        (*err_counter)++;
         return;
     }
 
     // File
     if (S_ISREG(st.st_mode))
     {
-        *f_counter++;
-        *total_size += st.st_size;
+        (*f_counter)++;
+        *total_size += (size_t)st.st_size;
     }
     // Simbolic Link
     else if (S_ISLNK(st.st_mode))
     {
-        *slink_counter++;
+        (*slink_counter)++;
     }
     // Directory
     else if (S_ISDIR(st.st_mode))
     {
-        *dir_counter++;
+        (*dir_counter)++;
 
         struct dirent **entry;
         int n = scandir(new_path, &entry, NULL, sorter);
@@ -441,20 +454,20 @@ static void check_element(struct dirent **namelist, const char *current_path, si
         if (n == -1)
         {
             perror("scandir");
-            *err_counter++;
+            (*err_counter)++;
         }
 
         for (int i = 0; i < n; i++)
         {
             // Recursively checks directory elements and updates counters
-            check_element(entry[i], new_path, &f_counter, &dir_counter, &slink_counter,
-                          &err_counter, &total_size, sorter, opts);
+            check_element(entry[i], new_path, f_counter, dir_counter, slink_counter,
+                          err_counter, total_size, sorter, opts);
             free(entry[i]);
         }
 
         free(entry);
     }
-    
+
     if (opts.recursive)
     {
         // Prints file's name
@@ -463,7 +476,7 @@ static void check_element(struct dirent **namelist, const char *current_path, si
         {
             sufix++;
         }
-        printf("%s\n", sufix);   
+        printf("%s\n", sufix);
     }
 
     return;
