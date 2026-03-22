@@ -14,7 +14,6 @@
 - 
 
 
-
 ## [2026-03-17]
 **Plans**
 - Implements commands and arguments verification

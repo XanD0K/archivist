@@ -24,7 +24,7 @@ const CommandEntry cmd_table[] =
     {"delete", handle_delete, 3, 4},
     {"duplicate", handle_duplicate, 3, 3},
     {"help", handle_help, 2, 2},
-    {"list", handle_list, 3, 6},
+    {"list", handle_list, 2, 8},
     {"log", handle_log, 2, 2},
     {"move", handle_move, 4, 5},
     {"rename", handle_rename, 3, 5},
@@ -40,7 +40,7 @@ int execute_command(int argc, char **argv)
 {
     if (argc < 2)
     {        
-        fprintf(stderr, "Usage: ./archivist COMMAND [arguments...]\n,"
+        fprintf(stderr, "Usage: ./archivist COMMAND [arguments]\n,"
                         "Check available commands with: ./archivist help\n");
         return 1;
     }
@@ -50,7 +50,7 @@ int execute_command(int argc, char **argv)
     if (index == -1)
     {
         fprintf(stderr, "Invalid command: %s!"
-                        "Check all commands available with: ./archivist help\n", argv[1]);
+                        "Check available commands with: ./archivist help\n", argv[1]);
         return 2;
     }
 
@@ -59,30 +59,10 @@ int execute_command(int argc, char **argv)
     {
         return 3;
     }
-
-    // Initializes st and DIR to access 
-    if (strcasecmp(argv[1], "log") != 0 && strcasecmp(argv[1], "help") != 0)
-    {
-        // Tries to fill st with directory's data
-        struct stat st;
-        if (stat(argv[2], &st) != 0)
-        {
-            fprintf(stderr, "Error in stat() for %s: %s\n", argv[2], strerror(errno));
-            return 4;
-        }
-
-        // Checks if path is a directory
-        if (!S_ISDIR(st.st_mode))
-        {
-            errno = ENOTDIR;
-            fprintf(stderr, "Error accessing diretory %s: %s", argv[2], strerror(errno));
-            return 5;
-        }
-
-        const int handler_result = cmd_table[index].handler(argc, argv);
-
-        return handler_result;
-    }
+    
+    // Calls handler function
+    const int handler_result = cmd_table[index].handler(argc, argv);
+    return handler_result;
 }
 
 // Tries to get command's index
@@ -146,7 +126,8 @@ static bool validate_args(int argc, ptrdiff_t index)
             // List
             case 4:
             {
-                fprintf(stderr, "Usage: ./archivist %s DIRECTORY [sort] [asc|desc] [-r|--recursive]\n", cmd);
+                fprintf(stderr, "Usage: ./archivist %s DIRECTORY [order] [revers] [recursive] [dir-first] [case-insensitive]\n"
+                                "See all flags available with: ./archivist %s -h|--help|help\n", cmd, cmd);
                 break;
             }
             // Move / Restore
@@ -189,5 +170,5 @@ static bool check_args_count(int argc, ptrdiff_t index)
     int min = cmd_table[index].min_args;
     int max = cmd_table[index].max_args;
 
-    return (argc >= min || argc <= max);
+    return (argc >= min && argc <= max);
 }

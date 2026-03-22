@@ -6,6 +6,6 @@
 
 // Prototypes
 DIR *open_directory(const char *path);
-char *get_directory(char *path);
+char *get_valid_directory(const char *path)
 
 #endif

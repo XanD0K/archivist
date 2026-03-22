@@ -3,6 +3,7 @@
 
 ## [Unreleased] - DATE
 ### Added
+
 ### Changed
 
 ### Fixed
@@ -10,21 +11,25 @@
 ### Removed
 
 
-## [0.1.0] - DATE
+## [0.1.1] - DATE
+### Added
+- Added `help` flag for `list` functionality, which fully describes the command and all flags available
+
+### Changed
+- Renamed `get_directory()` to `get_valid_directory()` and included logic to keep `.` as the default directory if user didn't provide one
+
+### Fixed
+
+### Removed
+
+
+## [0.1.0] - 2026-03-20
 ### Added
 - Fully implemented `list` functionality
 - Added `order`, `reverse`, `recursive`, `dir-first` and `case-sensitive` flags to `list` functionality
 
 ### Changed
-
-### Fixed
-
-### Removed
-
-
-## [0.0.3] - 2026-03-20
-### Changed
-- Changed CLI arguments parser and validation to use `getopt_long()`, allowing flexibility in user's input
+- Implemented CLI arguments parser and validation with `getopt_long()`
 - Segregated `commands.h`, reallocating all `list` functionality logic into `list.h`
 
 ### Removed

@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/stat.h>
 
 #include "utils.h"
 
@@ -10,7 +11,7 @@
 DIR *open_directory(const char *path)
 {
     DIR *dir = opendir(path);
-    if (dir == NULL)
+    if (!dir)
     {
         fprintf(stderr, "Couldn't open directory %s: %s\n", path, strerror(errno));
         return NULL;
@@ -18,18 +19,34 @@ DIR *open_directory(const char *path)
     return dir;
 }
 
-char *get_directory(char *path)
+// Checks for valid directory, setting (.) as default, and removing trailing /
+char *get_valid_directory(const char *path)
 {
-    if (!path)
+    const char *p = (!path) ? "." : path;
+    char *base_dir = strdup(p);
+    if (!base_dir)
     {
         return NULL;
     }
-    char *base_dir = strdup(path);
-    if (!base_dir)
+
+    struct stat st;
+    // Tries to fill st with directory's data
+    if (stat(base_dir, &st) != 0)
     {
-        return 6;
+        fprintf(stderr, "Error in stat() for %s: %s\n", p, strerror(errno));
+        free(base_dir);
+        return NULL;
     }
-    
+
+    // Checks if path is a directory
+    if (!S_ISDIR(st.st_mode))
+    {
+        errno = ENOTDIR;
+        fprintf(stderr, "Error accessing diretory %s: %s\n", p, strerror(errno));
+        free(base_dir);
+        return NULL;
+    }
+
     // Ensures path has no trailing /
     size_t len = strlen(base_dir);
     if (len > 0 && base_dir[len - 1] == '/')

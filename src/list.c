@@ -15,7 +15,10 @@
 #include "utils.h"
 
 // Prototypes
+static void print_list_help(void);
+static ListOptions parse_list_opts(int argc, char **argv);
 static bool check_sort(char *sort);
+static SortFunc get_sort_func(char *order);
 static int cmp_name(const struct dirent **a, const struct dirent **b);
 static int cmp_date(const struct dirent **a, const struct dirent **b);
 static int cmp_size(const struct dirent **a, const struct dirent **b);
@@ -24,7 +27,6 @@ static int check_is_dir(const struct dirent **a, const struct dirent **b);
 static void check_element(struct dirent **namelist, const char *current_path, size_t *f_counter,
                           size_t *dir_counter, size_t *slink_counter, size_t *err_counter,
                           size_t *total_size, SortFunc sorter, ListOptions opts);
-static ListOptions parse_list_opts(int argc, char **argv);
 
 // Globals
 static const char *sorts[] = {"date", "name", "size", "type", "version"};
@@ -36,17 +38,31 @@ static bool case_sensitive;
 // Lists information from a given directory
 int handle_list(int argc, char **argv)
 {
+    // Checks for 'help' flag
+    if (argc == 3 && 
+        (strcasecmp(argv[2], "help") == 0 ||
+         strcasecmp(argv[2], "--help") == 0 ||
+         strcasecmp(argv[2], "-h") == 0))
+    {
+        print_list_help();
+        return 0;
+    }
+
+    // Gets valid directory (default: .)
+    base_dir = get_valid_directory(argv[2]);
+    if (!base_dir)
+    {
+        return 4;
+    }
+
     // Parses CLI arguments
     ListOptions opts = parse_list_opts(argc, argv);
-    
-    reverse = (opts.reverse) ? 1 : -1;
+
+    reverse = (opts.reverse) ? -1 : 1;
     dir_first = opts.dir_first;
     case_sensitive = opts.case_sensitive;
 
     size_t f_counter = 0, dir_counter = 0, slink_counter = 0, err_counter = 0, total_size = 0;
-
-    // Gets directory
-    base_dir = get_directory(argv[2]);    
 
     // Gets sorter function
     SortFunc sorter = cmp_name;
@@ -57,8 +73,8 @@ int handle_list(int argc, char **argv)
         {
             errno = EINVAL;
             fprintf(stderr, "Invalid sort argument: %s\n"
-                            "Usage: ./archivis list DIRECTORY [name|version|type|size|date] [asc|desc] [-r|--recursive] [-df|--dirfirst] [-cs|-ci]", strerror(errno));
-            return 6;
+                            "Usage: ./archivist list DIRECTORY [name|version|type|size|date] [asc|desc] [-r|--recursive] [-df|--dirfirst] [-cs|-ci]", strerror(errno));
+            return 5;
         }
 
         // Gets sort function for given sort method
@@ -72,7 +88,7 @@ int handle_list(int argc, char **argv)
     if (n == -1)
     {
         perror("scandir");
-        return 7;
+        return 6;
     }
 
     for (int i = 0; i < n; i++)
@@ -102,10 +118,43 @@ int handle_list(int argc, char **argv)
     if (err_counter != 0)
     {
         printf("(Finish listing with %zu erros)\n", err_counter);
-        return 8;
+        return 7;
     }
     
     return 0;
+}
+
+// Prints explanations to 'list' functionality
+static void print_list_help(void)
+{
+    puts(
+    "Usage: ./archivist list DIRECTORY [FLAGS]\n"
+    "\n"
+    "Flags:\n"
+    "   -o, --order <date|name|size|type|version>\n"
+    "       Sorts output\n"
+    "       Default: name\n"
+    "   -r, --reverse\n"
+    "       Changes order (ascending | descending)\n"
+    "       Default: asc\n"
+    "   -R, --recursive\n"
+    "       Also lists subdirectories\n"
+    "       Default: off\n"
+    "   --dir-first\n"
+    "       Directories before files\n"
+    "       Default: off\n"
+    "   --case-sensitive\n"
+    "       Distinguish case\n"
+    "       Default: off\n"
+    "\n"
+    "Examples:\n"
+    "./archivist list /folder\n"
+    "./archivist list /folder -o size -R\n"
+    "./archivist list /folder --dir-first --recursive --reverse\n"
+    "./archivist list /folder --case-sensitive --order version\n"
+    "\n"
+    "All commands: ./archivist help"
+    );
 }
 
 // Parses through CLI arguments
@@ -202,7 +251,7 @@ static bool check_sort(char *sort)
 }
 
 // Returns specific sort function based on chosen sort method
-SortFunc *get_sort_func(char *order)
+static SortFunc get_sort_func(char *order)
 {
     if (strcasecmp(order, "version") == 0)
     {
@@ -318,12 +367,12 @@ static int cmp_type(const struct dirent **a, const struct dirent **b)
     const char *extA = strrchr((*a)->d_name, '.');
     const char *extB = strrchr((*b)->d_name, '.');
 
-    if (extA == NULL)
+    if (!extA)
     {
         extA = "";
     }
 
-    if (extB == NULL)
+    if (!extB)
     {
         extB = "";
     }
@@ -410,6 +459,10 @@ static void check_element(struct dirent **namelist, const char *current_path, si
     {
         // Prints file's name
         const char *sufix = new_path + strlen(base_dir);
+        if (*sufix == '/')
+        {
+            sufix++;
+        }
         printf("%s\n", sufix);   
     }
 

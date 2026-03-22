@@ -5,7 +5,6 @@
 - [ ] Implement `list` feature
 - [-] `list` feature → implement comparation functions for name and version, and get rid of `alphasort` and `versionsort`
 - [ ] `list` feature → also prints in horizontal direction
-- [ ] `list` feature → allow to list for a specific name
 - [ ] Implement `rename` feature
 - [ ] Implement `backup` feature
 - [ ] Implement `tree` feature
@@ -22,7 +21,6 @@
 
 ## Refactoring tasks
 - [ ] Change `validade_command` to use `for` loop instead of `bsearch()`
-- [ ] Merge `search` feature into `list`
 
 
 ## Testing
@@ -41,3 +39,5 @@
 - [x] `list` feature → allow `argv[4]` as ASC and DESC order
 - [x] Descentralize `commands.h` and create a `.h` file for each functionality
 - [x] Use `getopt_long()` to allow flexible CLI arguments
+- [x] Implemented help flag for `list` functionality
+- [x] Improved directory validation and kept `.` as default
