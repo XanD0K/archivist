@@ -22,8 +22,7 @@ const CommandEntry cmd_table[] =
 {
     {"backup", handle_backup, 4, 4},
     {"delete", handle_delete, 3, 4},
-    {"duplicate", handle_duplicate, 3, 3},
-    {"help", handle_help, 2, 2},
+    {"duplicate", handle_duplicate, 3, 3},    
     {"list", handle_list, 2, 8},
     {"log", handle_log, 2, 2},
     {"move", handle_move, 4, 5},
@@ -40,9 +39,21 @@ int execute_command(int argc, char **argv)
 {
     if (argc < 2)
     {        
-        fprintf(stderr, "Usage: ./archivist COMMAND [arguments]\n,"
+        fprintf(stderr, "Usage: ./archivist COMMAND [arguments]\n"
                         "Check available commands with: ./archivist help\n");
         return 1;
+    }
+
+    
+    if (strcasecmp(argv[1], "help") == 0)
+    {
+        if (argc != 2)
+        {
+            fprintf(stderr, "Usage: ./archivist help\n");
+            return 1;
+        }
+        handle_help();
+        return 0;
     }
 
     // Checks if command if valid
