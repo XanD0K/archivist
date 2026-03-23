@@ -44,7 +44,7 @@ int execute_command(int argc, char **argv)
         return 1;
     }
 
-    
+    // Calls 'help' functionality
     if (strcasecmp(argv[1], "help") == 0)
     {
         if (argc != 2)
