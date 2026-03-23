@@ -17,7 +17,7 @@
 // Prototypes
 static void print_list_help(void);
 static ListOptions parse_list_opts(int argc, char **argv, int opt_start);
-static bool check_sort(char *sort);
+static bool check_sort(char *sort, const char*sorts);
 static SortFunc get_sort_func(char *order);
 static int cmp_name(const struct dirent **a, const struct dirent **b);
 static int cmp_date(const struct dirent **a, const struct dirent **b);
@@ -29,11 +29,10 @@ static void check_element(struct dirent *namelist, const char *current_path, siz
                           size_t *total_size, SortFunc sorter, ListOptions opts);
 
 // Globals
-static const char *sorts[] = {"date", "name", "size", "type", "version"};
 char *base_dir = NULL;
 static int reverse;
 static bool dir_first;
-static bool case_sensitive;
+static bool ignore_case;
 
 // Lists information from a given directory
 int handle_list(int argc, char **argv)
@@ -73,16 +72,18 @@ int handle_list(int argc, char **argv)
 
     reverse = (opts.reverse) ? -1 : 1;
     dir_first = opts.dir_first;
-    case_sensitive = opts.case_sensitive;
+    ignore_case = opts.base.ignore_case;
 
     size_t f_counter = 0, dir_counter = 0, slink_counter = 0, err_counter = 0, total_size = 0;
+
+    const char *sorts[] = {"date", "name", "size", "type", "version"};
 
     // Gets sorter function
     SortFunc sorter = cmp_name;
     if (strcasecmp(opts.order, "name") != 0)
     {
         // Checks for valid sort method
-        if (!check_sort(opts.order))
+        if (!check_sort(opts.order, sorts))
         {
             errno = EINVAL;
             fprintf(stderr, "Invalid sort argument: %s\n"
@@ -108,7 +109,7 @@ int handle_list(int argc, char **argv)
     {
         if (strcmp(namelist[i]->d_name, ".") != 0 && strcmp(namelist[i]->d_name, "..") != 0)
         {
-            if (!opts.recursive)
+            if (!opts.base.recursive)
             {
                 // Prints file's name
                 printf("%s\n", namelist[i]->d_name);
@@ -127,7 +128,7 @@ int handle_list(int argc, char **argv)
     printf("Directories: %zu\n"
            "Files: %zu\n"
            "Simbolic Links: %zu\n"
-           "Total size: %zu\n", dir_counter, f_counter, slink_counter, total_size);
+           "Total size: %zu bytes\n", dir_counter, f_counter, slink_counter, total_size);
     if (err_counter != 0)
     {
         printf("(Finish listing with %zu erros)\n", err_counter);
@@ -141,30 +142,33 @@ int handle_list(int argc, char **argv)
 static void print_list_help(void)
 {
     puts(
-        "Usage: ./archivist list DIRECTORY [FLAGS]\n"
+        "Usage: ./archivist list [DIRECTORY] [FLAGS]\n"
+        "\n"
+        "DIRECTORY defaults to current directory (.)\n"
         "\n"
         "Flags:\n"
-        "   -o, --order <date|name|size|type|version>\n"
-        "       Sorts output\n"
-        "       Default: name\n"
-        "   -r, --reverse\n"
-        "       Changes order (ascending | descending)\n"
-        "       Default: asc\n"
-        "   -R, --recursive\n"
-        "       Also lists subdirectories\n"
-        "       Default: off\n"
+        "   -o | --order <date|name|size|type|version>\n"
+        "       sorts output\n"
+        "       default: name\n"
+        "   -r | --reverse\n"
+        "       changes order (ascending | descending)\n"
+        "       default: asc\n"
+        "   -R | --recursive\n"
+        "       also lists subdirectories\n"
+        "       default: off\n"
         "   --dir-first\n"
-        "       Directories before files\n"
-        "       Default: off\n"
-        "   --case-sensitive\n"
-        "       Distinguish case\n"
-        "       Default: off\n"
+        "       directories before files\n"
+        "       default: off\n"
+        "   -i, --ignore-case\n"
+        "       distinguish case\n"
+        "       default: on\n"
         "\n"
         "Examples:\n"
+        "./archivist list\n"
         "./archivist list /folder\n"
         "./archivist list /folder -o size -R\n"
         "./archivist list /folder --dir-first --recursive --reverse\n"
-        "./archivist list /folder --case-sensitive --order version\n"
+        "./archivist list /folder -i --order version\n"
         "\n"
         "All commands: ./archivist help"
     );
@@ -178,6 +182,7 @@ static ListOptions parse_list_opts(int argc, char **argv, int opt_start)
 
     // Sets default values
     opts.order = "name";
+    opts.base.ignore_case = true;
     
     // Sets array of flags
     static struct option long_opts[] =
@@ -186,18 +191,18 @@ static ListOptions parse_list_opts(int argc, char **argv, int opt_start)
         {"reverse", no_argument, 0, 'r'},
         {"recursive", no_argument, 0, 'R'},
         {"dir-first", no_argument, 0, 0},
-        {"case-sensitive", no_argument, 0, 0},
+        {"ignore-case", no_argument, 0, 'i'},
         {NULL, 0, NULL, 0}
     };
 
     int opt = 0;
     int long_index = 0;
-    char *shor_opts = "o:rR";
+    char *short_opts = "o:rRi";
 
     // Skips command and directory in CLI arguments
     optind = opt_start;
 
-    while ((opt = getopt_long(argc, argv, shor_opts, long_opts, &long_index)) != -1)
+    while ((opt = getopt_long(argc, argv, short_opts, long_opts, &long_index)) != -1)
     {
         switch(opt)
         {
@@ -218,8 +223,14 @@ static ListOptions parse_list_opts(int argc, char **argv, int opt_start)
             // Recursive
             case 'R':
             {
-                opts.recursive = true;
+                opts.base.recursive = true;
                 break;
+            }
+
+            // Ignore case
+            case 'i':
+            {
+                opts.base.ignore_case = false;
             }
 
             // Long arguments
@@ -229,10 +240,7 @@ static ListOptions parse_list_opts(int argc, char **argv, int opt_start)
                 {
                     opts.dir_first = true;
                 }
-                else if (strcmp(long_opts[long_index].name, "case-sensitive") == 0)
-                {
-                    opts.case_sensitive = true;
-                }
+
                 break;
             }
 
@@ -248,7 +256,7 @@ static ListOptions parse_list_opts(int argc, char **argv, int opt_start)
 }
 
 // Checks for valid sort method
-static bool check_sort(char *sort)
+static bool check_sort(char *sort, const char*sorts)
 {
     size_t sorts_len = sizeof(sorts) / sizeof(sorts[0]);
 
@@ -299,7 +307,7 @@ static int cmp_name(const struct dirent **a, const struct dirent **b)
         }
     }
 
-    int result = (case_sensitive) ? (strcmp((*a)->d_name, (*b)->d_name)) : (strcasecmp((*a)->d_name, (*b)->d_name)); 
+    int result = (!ignore_case) ? (strcmp((*a)->d_name, (*b)->d_name)) : (strcasecmp((*a)->d_name, (*b)->d_name)); 
 
     return result * reverse;
 }
@@ -327,7 +335,7 @@ static int cmp_date(const struct dirent **a, const struct dirent **b)
     if (stat(pathA, &sa) != 0 || stat(pathB, &sb) != 0)
     {
         // Fallback to name if fails
-        return (case_sensitive) ? (strcmp((*a)->d_name, (*b)->d_name)) :(strcasecmp((*a)->d_name, (*b)->d_name));
+        return (!ignore_case) ? (strcmp((*a)->d_name, (*b)->d_name)) :(strcasecmp((*a)->d_name, (*b)->d_name));
     }
     
     int result = (sa.st_mtime > sb.st_mtime) - (sa.st_mtime < sb.st_mtime);
@@ -468,7 +476,7 @@ static void check_element(struct dirent *namelist, const char *current_path, siz
         free(entry);
     }
 
-    if (opts.recursive)
+    if (opts.base.recursive)
     {
         // Prints file's name
         const char *sufix = new_path + strlen(base_dir);
