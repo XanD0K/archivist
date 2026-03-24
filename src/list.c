@@ -14,25 +14,25 @@
 #include "list.h"
 #include "utils.h"
 
-// Prototypes
-static void print_list_help(void);
-static ListOptions parse_list_opts(int argc, char **argv, int opt_start);
-static bool check_sort(char *sort, const char*sorts);
-static SortFunc get_sort_func(char *order);
-static int cmp_name(const struct dirent **a, const struct dirent **b);
-static int cmp_date(const struct dirent **a, const struct dirent **b);
-static int cmp_size(const struct dirent **a, const struct dirent **b);
-static int cmp_type(const struct dirent **a, const struct dirent **b);
-static int check_is_dir (const struct dirent *a, const struct dirent *b);
-static void check_element(struct dirent *namelist, const char *current_path, size_t *f_counter,
-                          size_t *dir_counter, size_t *slink_counter, size_t *err_counter,
-                          size_t *total_size, SortFunc sorter, ListOptions opts);
-
 // Globals
 char *base_dir = NULL;
 static int reverse;
 static bool dir_first;
 static bool ignore_case;
+
+// Prototypes
+static void print_list_help(void);
+static ListOptions parse_list_opts(int argc, char **argv, int opt_start);
+static bool check_sort(char *sort, const char *sorts[], size_t len);
+static SortFunc get_sort_func(char *order);
+static int cmp_name(const struct dirent **a, const struct dirent **b);
+static int cmp_date(const struct dirent **a, const struct dirent **b);
+static int cmp_size(const struct dirent **a, const struct dirent **b);
+static int cmp_ext(const struct dirent **a, const struct dirent **b);
+static int check_is_dir (const struct dirent *a, const struct dirent *b);
+static void check_element(struct dirent *namelist, const char *current_path, size_t *f_counter,
+                          size_t *dir_counter, size_t *slink_counter, size_t *err_counter,
+                          size_t *total_size, SortFunc sorter, ListOptions opts);
 
 // Lists information from a given directory
 int handle_list(int argc, char **argv)
@@ -76,18 +76,18 @@ int handle_list(int argc, char **argv)
 
     size_t f_counter = 0, dir_counter = 0, slink_counter = 0, err_counter = 0, total_size = 0;
 
-    const char *sorts[] = {"date", "name", "size", "type", "version"};
+    const char *sorts[] = {"date", "extension", "name", "size", "version"};
 
     // Gets sorter function
     SortFunc sorter = cmp_name;
     if (strcasecmp(opts.order, "name") != 0)
     {
         // Checks for valid sort method
-        if (!check_sort(opts.order, sorts))
+        if (!check_sort(opts.order, sorts, sizeof(sorts)/sizeof(sorts[0])))
         {
             errno = EINVAL;
             fprintf(stderr, "Invalid sort argument: %s\n"
-                            "Usage: ./archivist list DIRECTORY [name|version|type|size|date] [asc|desc] [-r|--recursive] [-df|--dirfirst] [-cs|-ci]", strerror(errno));
+                            "Usage: ./archivist list DIRECTORY [name|version|extension|size|date] [asc|desc] [-r|--recursive] [-df|--dirfirst] [-cs|-ci]", strerror(errno));
             return 5;
         }
 
@@ -147,12 +147,17 @@ static void print_list_help(void)
         "DIRECTORY defaults to current directory (.)\n"
         "\n"
         "Flags:\n"
-        "   -o | --order <date|name|size|type|version>\n"
-        "       sorts output\n"
+        "   -o | --order <date|name|size|extension|version>\n"
+        "       sorts output by:\n"
+        "           date → compares last modification date\n"
+        "           name → compares the ASCII value of each character\n"
+        "           size → compares the size\n"
+        "           extension → compares extension of each file\n"
+        "           version → compares letters and numbers separately\n"
         "       default: name\n"
         "   -r | --reverse\n"
         "       changes order (ascending | descending)\n"
-        "       default: asc\n"
+        "       default: off (ascending)\n"
         "   -R | --recursive\n"
         "       also lists subdirectories\n"
         "       default: off\n"
@@ -174,7 +179,7 @@ static void print_list_help(void)
     );
 }
 
-// Parses through CLI arguments
+// Parses through CLI arguments for 'list' functionality
 static ListOptions parse_list_opts(int argc, char **argv, int opt_start)
 {
     // Declares structure
@@ -256,11 +261,9 @@ static ListOptions parse_list_opts(int argc, char **argv, int opt_start)
 }
 
 // Checks for valid sort method
-static bool check_sort(char *sort, const char*sorts)
+static bool check_sort(char *sort, const char *sorts[], size_t len)
 {
-    size_t sorts_len = sizeof(sorts) / sizeof(sorts[0]);
-
-    for (size_t i = 0; i < sorts_len; i++)
+    for (size_t i = 0; i < len; i++)
     {
         if (strcasecmp(sort, sorts[i]) == 0)
         {
@@ -286,9 +289,9 @@ static SortFunc get_sort_func(char *order)
     {
         return cmp_size;
     }
-    else if (strcasecmp(order, "type") == 0)
+    else if (strcasecmp(order, "extension") == 0)
     {
-        return cmp_type;
+        return cmp_ext;
     }
 
     // Fallback
@@ -373,7 +376,7 @@ static int cmp_size(const struct dirent **a, const struct dirent **b)
 
 }
 
-static int cmp_type(const struct dirent **a, const struct dirent **b)
+static int cmp_ext(const struct dirent **a, const struct dirent **b)
 {
     // Directories before files
     if (dir_first)
@@ -431,8 +434,7 @@ static void check_element(struct dirent *namelist, const char *current_path, siz
     
     struct stat st;
     char new_path[PATH_MAX];
-    snprintf(new_path, sizeof(new_path), "%s/%s", current_path, namelist->d_name);
-    
+    snprintf(new_path, sizeof(new_path), "%s/%s", current_path, namelist->d_name);    
     if (stat(new_path, &st) != 0)
     {
         fprintf(stderr, "Couldn't access %s: %s\n", new_path, strerror(errno));
