@@ -1,5 +1,34 @@
 # Development Log
 
+## [DATE]
+**Plans**
+
+**Challenges**
+
+**Progress**
+
+
+## [DATE]
+**Plans**
+
+**Challenges**
+
+**Progress**
+
+
+## [2026-03-24]
+**Plans**
+- Implements `search` feature
+
+**Challenges**
+- Implementing multiple flags, applied to recursive elements
+- Deciding the best way to call each flag to each element, especially when `recursive` flag was `true`
+
+**Progress**
+- First, I was thinking of getting all elements into an `char **array`, and start removing them based on chosen flags
+- Then I decided the best way of implementing a search feature was to check each element at a time, printing only those who passed all checks
+- Didn't struggle with CLI arguments parser, help message, declarations, etc., especially after implementing the `list` feature
+
 
 ## [2026-03-20]
 **Plans**
@@ -11,7 +40,10 @@
 
 **Progress**
 - Changed from manual CLI arguments parser and validation to an implementation that uses `getopt_long()`
-- 
+- Learned how to structure and build a CLI parser with `getopt_long()`:
+    - Michael Kerrisk's Linux manual page: https://man7.org/linux/man-pages/man3/getopt.3.html
+- Fully implemented `list` feature
+- Successfully implemente CLI arguments parser with `getopt_long()`
 
 
 ## [2026-03-17]

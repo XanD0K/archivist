@@ -8,9 +8,8 @@
 - [ ] Implement `rename` feature
 - [ ] Implement `backup` feature
 - [ ] Implement `tree` feature
-- [ ] Implement `help` feature
+- [-] Implement `help` feature
 - [ ] Implement `log` feature
-- [ ] Implement `search` feature
 - [ ] Implement `delete` feature
 - [ ] Implement `duplicate` feature
 - [ ] Implement `move` feature
@@ -21,13 +20,13 @@
 
 ## Refactoring tasks
 - [ ] Change `validade_command` to use `for` loop instead of `bsearch()`
-
+- [ ] Change `bsearch()` to my own implementation of a Binary Search
 
 ## Testing
 
 
 ## BACKLOG
-- [-] Implement iterative implementation when `argc == 1`
+- [ ] Iterative implementation for `argc == 1`
 
 
 ## DONE
@@ -39,5 +38,6 @@
 - [x] `list` feature → allow `argv[4]` as ASC and DESC order
 - [x] Descentralize `commands.h` and create a `.h` file for each functionality
 - [x] Use `getopt_long()` to allow flexible CLI arguments
-- [x] Implemented help flag for `list` functionality
-- [x] Improved directory validation and kept `.` as default
+- [x] Implement help flag for `list` functionality
+- [x] Improve directory validation and kept `.` as default
+- [x] Implement `search` feature

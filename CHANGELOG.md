@@ -10,17 +10,23 @@
 
 ### Removed
 
+## [0.2.0] - 2026-03-24
+### Added
+- Fully implemented `search` feature
+- Added `search` explanation on `help` functionality
 
-## [0.1.1] - DATE
+### Changed
+- Changed `search` usage to be `./archivist search NAME [DIRECTORY] [FLAGS]`, making NAME the (required) third argument and DIRECTORY the (optional) fourth argument
+
+
+## [0.1.1] - 2026-03-22
 ### Added
 - Added `help` flag for `list` functionality, which fully describes the command and all flags available
+- Started implementation of `help` functionality, with description of all available commands
 
 ### Changed
 - Renamed `get_directory()` to `get_valid_directory()` and included logic to keep `.` as the default directory if user didn't provide one
-
-### Fixed
-
-### Removed
+- Change `case-insensitive` flag to `ignore-case`
 
 
 ## [0.1.0] - 2026-03-20
@@ -33,7 +39,7 @@
 - Segregated `commands.h`, reallocating all `list` functionality logic into `list.h`
 
 ### Removed
-- Removed DIR *dir implementation on `commands.c`, before moving to handler functions. Kept directory check just with `struct stat st`
+- Removed DIR *dir implementation on `commands.c`. Kept directory check just with `struct stat st`
 
 
 ## [0.0.2] - 2026-03-17
