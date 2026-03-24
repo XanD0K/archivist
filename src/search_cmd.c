@@ -13,19 +13,15 @@
 #include "search_cmd.h"
 #include "utils.h"
 
-// Globals
-static const off_t BUFFER = 1024;
-static char *base_dir;
-
 // Prototypes
 static void print_search_help(void);
 static SearchOptions parse_search_opts(int argc, char **argv, int opt_start, bool *size_err);
-static off_t get_size(char *size);
-static void search_element(char *base_dir, SearchOptions opts, struct dirent *namelist, const char *searched_name);
-static bool match_name(char *current_name, const char *searched, bool contains, bool ignore_case);
-static bool match_extension(char *current_name, char *ext);
-static bool match_type(char *current_name, char *current_path, char *type);
-static bool match_size(char *current_name, char *current_path, off_t max_size, off_t min_size);
+static off_t get_size(const char *size);
+static void search_element(char *current_path, const char *base_dir, SearchOptions opts, const struct dirent *namelist, const char *searched, size_t *counter, bool *printed);
+static bool match_name(const char *current_name, const char *searched, bool contains, bool ignore_case);
+static bool match_extension(const char *current_name, const char *ext);
+static bool match_type(const char *type, struct stat st);
+static bool match_size(const off_t max_size, const off_t min_size, struct stat st);
 
 // Searches for a specific file/directory
 int handle_search(int argc, char **argv)
@@ -40,41 +36,31 @@ int handle_search(int argc, char **argv)
         return 0;
     }
 
+    char *searched_name = strdup(argv[2]);
     const char *dir_path = NULL;
-    int opt_start = 0;
-    char *searched_name = NULL;
-
-    if ((argc > 3 && argv[3][0] == '-') || argc == 3)
+    int opt_start = 3;
+    if (!searched_name)
     {
-        opt_start = 3;
-        searched_name = strdup(argv[2]);
-        if (!searched_name)
-        {
-            fprintf(stderr, "Couldn't duplicate string '%s': %s\n", argv[2], strerror(errno));
-            return 4;
-        }
+        fprintf(stderr, "Couldn't duplicate string '%s': %s\n", argv[2], strerror(errno));
+        return 4;
     }
-    else if (argc > 3 && argv[3][0] != '-')
+
+    // Directory was provided
+    if (argc > 3 && argv[3][0] != '-')
     {
-        dir_path = argv[2];
+        dir_path = argv[3];
         opt_start = 4;
-        searched_name = strdup(argv[3]);
-        if (!searched_name)
-        {
-            fprintf(stderr, "Couldn't duplicate string '%s': %s\n", argv[3], strerror(errno));
-            return 4;
-        }
     }
 
     // Gets valid directory (default: .)
-    base_dir = get_valid_directory(dir_path);
+    char *base_dir = get_valid_directory(dir_path);
     if (!base_dir)
     {
         return 8;
     }
 
     bool size_err = false;
-    // Parse CLI arguments
+    // Parses CLI arguments
     SearchOptions opts = parse_search_opts(argc, argv, opt_start, &size_err);
     if (size_err)
     {
@@ -92,17 +78,31 @@ int handle_search(int argc, char **argv)
         return 6;
     }
 
+    size_t counter = 0;
+    bool printed = false;
     for (int i = 0; i < n; i++)
     {
         if (strcmp(namelist[i]->d_name, ".") != 0 && strcmp(namelist[i]->d_name, "..") != 0)
         {
-            search_element(base_dir, opts, namelist[i], searched_name);
+            search_element(base_dir, base_dir, opts, namelist[i], searched_name, &counter, &printed);
             free(namelist[i]);
         }
+    }
+    if (!printed)
+    {
+        if (!opts.base.recursive)
+        {
+            printf("Couldn't find '%s' on '%s' base directory", searched_name, base_dir);
+        }
+        else
+        {
+            printf("Couldn't find '%s' on base directory '%s' and in any other of its subdirectory", searched_name, base_dir);
+        }        
     }
 
     free(namelist);
     free(base_dir);
+    base_dir = NULL;
     free(searched_name);
     return 0;
 }
@@ -111,7 +111,7 @@ int handle_search(int argc, char **argv)
 static void print_search_help(void)
 {
     puts(
-        "Usage: ./archivist search [DIRECTORY] NAME [FLAGS]\n"
+        "Usage: ./archivist search NAME [DIRECTORY] [FLAGS]\n"
         "\n"
         "DIRECTORY defaults to current directory (.)\n"
         "If NAME is not important, use * symbol"
@@ -140,11 +140,11 @@ static void print_search_help(void)
         "\n"
         "Examples:\n"        
         "./archivist search filename.txt\n"
-        "./archivist search /folder filename.txt \n"
-        "./archivist search /folder filename -e .txt \n"
-        "./archivist search /folder * -e txt \n"
-        "./archivist search /folder filen -c --ignore-case -t file\n"
-        "./archivist search /folder filen -R --min-size 50K --max-size 50G\n"
+        "./archivist search filename.txt /folder\n"
+        "./archivist search filename /folder -e .txt \n"
+        "./archivist search * /folder -e txt \n"
+        "./archivist search filen /folder -c --ignore-case -t file\n"
+        "./archivist search filen /folder -R --min-size 50K --max-size 50G\n"
         "\n"
         "All comands: ./archivist help"
     );
@@ -231,8 +231,9 @@ static SearchOptions parse_search_opts(int argc, char **argv, int opt_start, boo
     return opts;
 }
 
-static off_t get_size(char *size)
+static off_t get_size(const char *size)
 {
+    const off_t BUFFER = 1024;
     char *ptr;
     long num = strtol(size, &ptr, 10);
     errno = 0;
@@ -241,15 +242,20 @@ static off_t get_size(char *size)
         perror("strtol");
         return -1;
     }
+    if (num < 0)
+    {
+        fprintf(stderr, "Size can't be negative: %ld\n", num);
+        return -1;
+    }
     if (ptr == size)
     {
-        fprintf(stderr, "No digitis were found\n");
+        fprintf(stderr, "No digits were found\n");
         return -1;
     }
 
     num = (off_t)num;
 
-    if(ptr == NULL)
+    if(ptr == NULL || strcasecmp(ptr, "B") == 0)
     {
         return num;
     }
@@ -274,7 +280,7 @@ static off_t get_size(char *size)
 }
 
 // Searches for an element
-static void search_element(char *current_path, SearchOptions opts, struct dirent *namelist, const char *searched)
+static void search_element(char *current_path, const char *base_dir, SearchOptions opts, const struct dirent *namelist, const char *searched, size_t *counter, bool *printed)
 {
     if (strcmp(namelist->d_name, ".") == 0 || strcmp(namelist->d_name, "..") == 0)
     {
@@ -300,7 +306,7 @@ static void search_element(char *current_path, SearchOptions opts, struct dirent
         }
         for (int i = 0; i < n; i++)
         {
-            search_element(new_path, opts, entry[i], searched);
+            search_element(new_path, base_dir, opts, entry[i], searched, counter, printed);
             free(entry[i]);
         }
 
@@ -320,13 +326,13 @@ static void search_element(char *current_path, SearchOptions opts, struct dirent
     }
 
     // Checks for element's type
-    if (opts.type && !match_type(namelist->d_name, current_path, opts.type))
+    if (opts.type && !match_type(opts.type, st))
     {
         return;
     }
 
     // Checks for size
-    if ((opts.max_size || opts.min_size) && !match_size(namelist->d_name, current_path, opts.max_size, opts.min_size))
+    if ((opts.max_size || opts.min_size) && !match_size(opts.max_size, opts.min_size, st))
     {
         return;
     }
@@ -338,13 +344,14 @@ static void search_element(char *current_path, SearchOptions opts, struct dirent
         sufix++;
     }
     printf("%s\n", sufix);
+    (*counter)++;
+    *printed = true;
     
     return;
-
 }
 
 // Checks if strings match
-static bool match_name(char *current_name, const char *searched, bool contains, bool ignore_case)
+static bool match_name(const char *current_name, const char *searched, bool contains, bool ignore_case)
 {
     // Exact match
     if(!contains)
@@ -352,11 +359,12 @@ static bool match_name(char *current_name, const char *searched, bool contains, 
         return (ignore_case) ? (strcasecmp(current_name, searched) == 0) : (strcmp(current_name, searched) == 0);
     }
     // Partial match (Contains = True)
-    // Parses through all characters
+    char *result = (ignore_case) ? (strcasestr(current_name, searched)) : (strstr(current_name, searched));
+    return result != NULL;
 }
 
 // Checks if extension matches
-static bool match_extension(char *current_name, char *ext)
+static bool match_extension(const char *current_name, const char *ext)
 {
     const char *dot = strrchr(current_name, '.');
     const char *ext_name = (dot != NULL) ? dot + 1 : "";
@@ -366,16 +374,8 @@ static bool match_extension(char *current_name, char *ext)
 }
 
 // Checks if type matches
-static bool match_type(char *current_name, char *current_path, char *type)
+static bool match_type(const char *type, struct stat st)
 {
-    struct stat st;
-    char path[PATH_MAX];
-    snprintf(path, sizeof(path), "%s/%s", current_path, current_name);
-    if (stat(path, &st) != 0)
-    {
-        return false;
-    }
-
     if (strcasecmp(type, "f") == 0 || strcasecmp(type, "file") == 0)
     {
         return S_ISREG(st.st_mode);
@@ -392,16 +392,8 @@ static bool match_type(char *current_name, char *current_path, char *type)
 }
 
 // Checks if size is between min and max
-static bool match_size(char *current_name, char *current_path, off_t max_size, off_t min_size)
+static bool match_size(const off_t max_size, const off_t min_size, struct stat st)
 {
-    struct stat st;
-    char path[PATH_MAX];
-    snprintf(path, sizeof(path), "%s/%s", current_path, current_name);
-    if (stat(path, &st) != 0)
-    {
-        return false;
-    }
-
     if (max_size != 0 && min_size != 0)
     {
         return (st.st_size > min_size && st.st_size < max_size);
