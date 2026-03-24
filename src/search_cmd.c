@@ -102,7 +102,6 @@ int handle_search(int argc, char **argv)
 
     free(namelist);
     free(base_dir);
-    base_dir = NULL;
     free(searched_name);
     return 0;
 }
