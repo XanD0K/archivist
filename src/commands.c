@@ -9,6 +9,7 @@
 
 #include "commands.h"
 #include "list.h"
+#include "search_cmd.h"
 #include "utils.h"
 
 // Prototypes
@@ -20,17 +21,20 @@ static bool check_args_count(int argc, ptrdiff_t index);
 // Table with available commands
 const CommandEntry cmd_table[] = 
 {
+    {"list", handle_list, 2, 8},
+    {"search", handle_search, 3, 11},
+
+    /*
     {"backup", handle_backup, 4, 4},
     {"delete", handle_delete, 3, 4},
-    {"duplicate", handle_duplicate, 3, 3},    
-    {"list", handle_list, 2, 8},
+    {"duplicate", handle_duplicate, 3, 3},
     {"log", handle_log, 2, 2},
     {"move", handle_move, 4, 5},
     {"rename", handle_rename, 3, 5},
     {"report", handle_report, 3, 3},
     {"restore", handle_restore, 4, 5},
-    {"search", handle_search, 3, 4},
     {"tree", handle_tree, 3, 3},
+    */
     {NULL, NULL, 0, 0}
 };
 
