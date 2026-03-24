@@ -15,10 +15,12 @@ typedef struct
 
 // Prototypes
 int execute_command(int argc, char **argv);
+void handle_help(void);  // help.c
+
+/*
 int handle_backup(int argc, char **argv);
 int handle_delete(int argc, char **argv);
 int handle_duplicate(int argc, char **argv);
-int handle_help(int argc, char **argv);
 int handle_log(int argc, char **argv);
 int handle_move(int argc, char **argv);
 int handle_rename(int argc, char **argv);
@@ -26,5 +28,6 @@ int handle_report(int argc, char **argv);
 int handle_restore(int argc, char **argv);
 int handle_search(int argc, char **argv);
 int handle_tree(int argc, char **argv);
+*/
 
 #endif
