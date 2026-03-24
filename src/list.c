@@ -15,7 +15,7 @@
 #include "utils.h"
 
 // Globals
-char *base_dir = NULL;
+static char *base_dir = NULL;
 static int reverse;
 static bool dir_first;
 static bool ignore_case;
@@ -72,9 +72,7 @@ int handle_list(int argc, char **argv)
 
     reverse = (opts.reverse) ? -1 : 1;
     dir_first = opts.dir_first;
-    ignore_case = opts.base.ignore_case;
-
-    size_t f_counter = 0, dir_counter = 0, slink_counter = 0, err_counter = 0, total_size = 0;
+    ignore_case = opts.base.ignore_case;    
 
     const char *sorts[] = {"date", "extension", "name", "size", "version"};
 
@@ -104,6 +102,8 @@ int handle_list(int argc, char **argv)
         perror("scandir");
         return 6;
     }
+
+    size_t f_counter = 0, dir_counter = 0, slink_counter = 0, err_counter = 0, total_size = 0;
 
     for (int i = 0; i < n; i++)
     {
