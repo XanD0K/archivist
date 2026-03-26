@@ -43,21 +43,18 @@ int handle_list(int argc, char **argv)
          strcasecmp(argv[2], "--help") == 0 ||
          strcasecmp(argv[2], "-h") == 0))
     {
+        // Prints help message for 'list' functionality
         print_list_help();
         return 0;
     }
-    
-    const char *dir_path = NULL;
-    int opt_start = 0;    
 
+    // Defines starting values
+    const char *dir_path = NULL;
+    int opt_start = 2;    
     if (argc >= 3 && argv[2][0] != '-')
     {
         dir_path = argv[2];
         opt_start = 3;
-    }
-    else
-    {
-        opt_start = 2;
     }
 
     // Gets valid directory (default: .)
@@ -85,7 +82,7 @@ int handle_list(int argc, char **argv)
         {
             errno = EINVAL;
             fprintf(stderr, "Invalid sort argument: %s\n"
-                            "Usage: ./archivist list DIRECTORY [name|version|extension|size|date] [asc|desc] [-r|--recursive] [-df|--dirfirst] [-cs|-ci]", strerror(errno));
+                            "Usage: ./archivist list [DIRECTORY] [name|version|extension|size|date] [asc|desc] [-r|--recursive] [-df|--dirfirst] [-cs|-ci]", strerror(errno));
             return 5;
         }
 
@@ -127,8 +124,15 @@ int handle_list(int argc, char **argv)
     // Prints f_counter, dir_counter and total_size variables
     printf("Directories: %zu\n"
            "Files: %zu\n"
-           "Simbolic Links: %zu\n"
-           "Total size: %zu bytes\n", dir_counter, f_counter, slink_counter, total_size);
+           "Simbolic Links: %zu\n", dir_counter, f_counter, slink_counter);
+    if (opts.base.human_readable)
+    {
+        formatted_output(total_size);
+    }
+    else
+    {
+        printf("Total size: %zu bytes\n", total_size);
+    }
     if (err_counter != 0)
     {
         printf("(Finish listing with %zu erros)\n", err_counter);
@@ -138,7 +142,7 @@ int handle_list(int argc, char **argv)
     return 0;
 }
 
-// Prints explanations to 'list' functionality
+// Prints explanations of 'list' functionality
 static void print_list_help(void)
 {
     puts(
@@ -147,6 +151,12 @@ static void print_list_help(void)
         "DIRECTORY defaults to current directory (.)\n"
         "\n"
         "Flags:\n"
+        "   -h | --human-readable\n"
+        "       outputs size of files/dir in a more reabable format\n"
+        "       default: off\n"
+        "   -i | --ignore-case\n"
+        "       distinguish case\n"
+        "       default: on\n"
         "   -o | --order <date|name|size|extension|version>\n"
         "       sorts output by:\n"
         "           date → compares last modification date\n"
@@ -164,9 +174,6 @@ static void print_list_help(void)
         "   --dir-first\n"
         "       directories before files\n"
         "       default: off\n"
-        "   -i, --ignore-case\n"
-        "       distinguish case\n"
-        "       default: on\n"
         "\n"
         "Examples:\n"
         "./archivist list\n"
@@ -197,12 +204,13 @@ static ListOptions parse_list_opts(int argc, char **argv, int opt_start)
         {"recursive", no_argument, 0, 'R'},
         {"dir-first", no_argument, 0, 0},
         {"ignore-case", no_argument, 0, 'i'},
+        {"human-readable", no_argument, 0, 'h'},
         {NULL, 0, NULL, 0}
     };
 
     int opt = 0;
     int long_index = 0;
-    char *short_opts = "o:rRi";
+    char *short_opts = "o:rRih";
 
     // Skips command and directory in CLI arguments
     optind = opt_start;
@@ -211,33 +219,34 @@ static ListOptions parse_list_opts(int argc, char **argv, int opt_start)
     {
         switch(opt)
         {
+            // Human readable
+            case 'h':
+            {
+                opts.base.human_readable = true;
+            }
+            // Ignore case
+            case 'i':
+            {
+                opts.base.ignore_case = false;
+            }
             // Oder
             case 'o':
             {
                 opts.order = optarg;
                 break;
             }
-
             // Reverse
             case 'r':
             {
                 opts.reverse = true;
                 break;
             }
-
             // Recursive
             case 'R':
             {
                 opts.base.recursive = true;
                 break;
             }
-
-            // Ignore case
-            case 'i':
-            {
-                opts.base.ignore_case = false;
-            }
-
             // Long arguments
             case 0:
             {
@@ -248,7 +257,6 @@ static ListOptions parse_list_opts(int argc, char **argv, int opt_start)
 
                 break;
             }
-
             // Error
             case '?':
             {
@@ -388,18 +396,8 @@ static int cmp_ext(const struct dirent **a, const struct dirent **b)
         }
     }
 
-    const char *extA = strrchr((*a)->d_name, '.');
-    const char *extB = strrchr((*b)->d_name, '.');
-
-    if (!extA)
-    {
-        extA = "";
-    }
-
-    if (!extB)
-    {
-        extB = "";
-    }
+    const char *extA = get_extension((*a)->d_name);
+    const char *extB = get_extension((*b)->d_name);
 
     int result = strcasecmp(extA, extB);
 
