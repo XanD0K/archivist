@@ -10,15 +10,20 @@
 
 ## [DATE]
 **Plans**
+- Implement `report` feature
 
 **Challenges**
+- Finding the best data structure to keep track of all extensions efficiently
 
 **Progress**
+- First thought was to use an ordered linked list to manage all extensions
+- Although it seemed like a solid idea, Grok (xAI) suggested using a Dynamic Array instead
+- On pset5 'speller', among all implementations I've made, one of them was a Dynamic Hash Table, that doubled its size when a specific factor was reached
 
 
 ## [2026-03-24]
 **Plans**
-- Implements `search` feature
+- Implement `search` feature
 
 **Challenges**
 - Implementing multiple flags, applied to recursive elements
@@ -32,8 +37,8 @@
 
 ## [2026-03-20]
 **Plans**
-- Improves CLI arguments validations
-- Implements `list` feature
+- Improve CLI arguments validations
+- Implement `list` feature
 
 **Challenges**
 - Learn how to use `getopt_long()` to allow multiple flags in no fixed order and a better flags parsing/validation
@@ -48,7 +53,7 @@
 
 ## [2026-03-17]
 **Plans**
-- Implements commands and arguments verification
+- Implement commands and arguments verification
 
 **Challenges**
 - Find the best way to make validations
@@ -66,7 +71,7 @@
 
 ## [2026-03-15]
 **Plans**
-- Creates a Makefile for Final Project `Archivist`
+- Create a Makefile for Final Project `Archivist`
 
 **Challenges**
 - Didn't know how to build a Makefile
@@ -76,6 +81,6 @@
 - Spent the last 3 days studying Makefile:
     - Colby College tutorial: https://www.cs.colby.edu/maxwell/courses/tutorials/maketutor/
     - GNU Make Tutorial: https://www.gnu.org/software/make/manual/make.html#How-Make-Works
-    - Help from Grok (AI) with all this process
+    - Help from Grok (xAI) with all this process
 - Learned how to build a professional Makefile
 - Finished Makefile implementation for `Archivist`

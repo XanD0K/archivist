@@ -13,10 +13,10 @@
 - [ ] Implement `delete` feature
 - [ ] Implement `duplicate` feature
 - [ ] Implement `move` feature
-- [ ] Implement `report` feature
+- [-] Implement `report` feature
 - [ ] Implement `restore` feature
 - [ ] Helper function to get full path from a file/directory
-
+- [ ] Add more fields in the `search` feature output
 
 ## Refactoring tasks
 - [ ] Change `validade_command` to use `for` loop instead of `bsearch()`
@@ -41,3 +41,4 @@
 - [x] Implement help flag for `list` functionality
 - [x] Improve directory validation and kept `.` as default
 - [x] Implement `search` feature
+- [x] Added `human-readable` flag to `list` and `report` functionalities

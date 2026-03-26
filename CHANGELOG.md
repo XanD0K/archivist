@@ -10,6 +10,17 @@
 
 ### Removed
 
+
+## [0.2.1] - 2026-03-25
+### Added
+- `formatted_output()` function to improve output when `human-readable` flag is toggled on
+- New flag for `list` and `report` functionalities: `--human-readable | -h`
+- First implementation of `report` feature
+
+### Changed
+- Made `get_extension()` function to keep modularity among files
+
+
 ## [0.2.0] - 2026-03-24
 ### Added
 - Fully implemented `search` feature
