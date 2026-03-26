@@ -8,6 +8,9 @@
 // Headers
 #include "cli_opts.h"
 
+// Prototypes
+int handle_report(int argc, char **argv);
+
 typedef struct
 {
     GeneralOptions base;  // extension | human-readable | recursive

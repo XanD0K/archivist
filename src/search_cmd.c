@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #define _FILE_OFFSET_BITS 64  // Forces off_t to be 64 bits
 
+// Libraries
 #include <dirent.h>
 #include <errno.h>
 #include <getopt.h>
@@ -10,6 +11,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+// Headers
 #include "search_cmd.h"
 #include "utils.h"
 
@@ -32,19 +34,21 @@ int handle_search(int argc, char **argv)
          strcasecmp(argv[2], "-h") == 0 ||
          strcasecmp(argv[2], "--help") == 0))
     {
+        // Prints help message for 'search' functionality
         print_search_help();
         return 0;
     }
 
     char *searched_name = strdup(argv[2]);
-    const char *dir_path = NULL;
-    int opt_start = 3;
     if (!searched_name)
     {
         fprintf(stderr, "Couldn't duplicate string '%s': %s\n", argv[2], strerror(errno));
-        return 4;
+        return 8;
     }
 
+    // Defines starting values
+    const char *dir_path = NULL;
+    int opt_start = 3;
     // Directory was provided
     if (argc > 3 && argv[3][0] != '-')
     {
@@ -56,7 +60,7 @@ int handle_search(int argc, char **argv)
     char *base_dir = get_valid_directory(dir_path);
     if (!base_dir)
     {
-        return 8;
+        return 4;
     }
 
     bool size_err = false;
@@ -106,7 +110,7 @@ int handle_search(int argc, char **argv)
     return 0;
 }
 
-// Prints explanations to 'search' functionality
+// Prints explanations of 'search' functionality
 static void print_search_help(void)
 {
     puts(
@@ -134,7 +138,7 @@ static void print_search_help(void)
         "   --max-size\n"
         "       only consider files smaller/larger than specified value\n"
         "       notation: B | K | KB | M | MB | G | GB | T | TB\n"
-        "       If notation not specified, B will be considered\n"
+        "       default: B (bytes)\n"
         "       e.g. 20 | 50K | 30GB | 200T\n"
         "\n"
         "Examples:\n"        
@@ -149,7 +153,7 @@ static void print_search_help(void)
     );
 }
 
-// Parse through CLI arguments for 'search' functionality
+// Parses through CLI arguments for 'search' functionality
 static SearchOptions parse_search_opts(int argc, char **argv, int opt_start, bool *size_err)
 {
     SearchOptions opts = {0};
@@ -201,7 +205,7 @@ static SearchOptions parse_search_opts(int argc, char **argv, int opt_start, boo
             }
             case 'e':
             {
-                opts.extension = optarg;
+                opts.base.extension = optarg;
                 break;
             }
             case 0:
@@ -319,7 +323,7 @@ static void search_element(char *current_path, const char *base_dir, SearchOptio
     }
 
     // Checks for extension
-    if (opts.extension && !match_extension(namelist->d_name, opts.extension))
+    if (opts.base.extension && !match_extension(namelist->d_name, opts.base.extension))
     {
         return;
     }
@@ -365,8 +369,7 @@ static bool match_name(const char *current_name, const char *searched, bool cont
 // Checks if extension matches
 static bool match_extension(const char *current_name, const char *ext)
 {
-    const char *dot = strrchr(current_name, '.');
-    const char *ext_name = (dot != NULL) ? dot + 1 : "";
+    const char *ext_name = get_extension(current_name);
     const char *clean_ext = (ext[0] == '.') ? ext + 1 : ext;
 
     return (strcasecmp(ext_name, clean_ext) == 0);
