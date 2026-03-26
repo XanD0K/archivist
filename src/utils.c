@@ -1,12 +1,13 @@
 #define _GNU_SOURCE
 
+// Libraries
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 #include <sys/stat.h>
 
+// Headers
 #include "utils.h"
 
 // Opens directory
@@ -57,4 +58,33 @@ char *get_valid_directory(const char *path)
     }
 
     return base_dir;
+}
+
+// Prints a more readable output message
+void formatted_output(size_t total_size)
+{
+    static const char *sizes[] = {"bytes", "kilobytes", "megabytes", "gigabytes", "terabytes", "petabytes"};
+    const float buffer = 1024.0;
+
+    float result = (float)total_size;
+    size_t index = 0;    
+    
+    while (result >= buffer)
+    {
+        result /= buffer;
+        index++;
+    }
+
+    // Limits index to 5
+    index = (index < 5) ? index : 5;
+
+    printf("Total size: %.2f %s\n", result, sizes[index]);
+}
+
+// Gets extension
+char *get_extension(char *name)
+{
+    const char *dot = strrchr(name, '.');
+    const char *ext = (dot != NULL) ? dot + 1 : "";
+    return ext;
 }
