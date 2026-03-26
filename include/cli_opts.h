@@ -5,8 +5,10 @@
 
 typedef struct
 {
-    bool recursive;
+    char *extension;
+    bool human_readable;
     bool ignore_case;
+    bool recursive;
 } GeneralOptions;
 
 #endif

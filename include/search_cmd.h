@@ -8,12 +8,11 @@
 
 typedef struct
 {
-    GeneralOptions base;  // ignore-case & recursive
+    GeneralOptions base;  // extension | ignore-case | recursive
     bool contains;
     off_t min_size;
     off_t max_size;
     char *type;
-    char *extension;
 } SearchOptions;
 
 // Prototypes

@@ -12,7 +12,7 @@ typedef int (*SortFunc)(const struct dirent **a, const struct dirent **b);
 // Structure to all CLI flags of 'list' functionality
 typedef struct
 {
-    GeneralOptions base;
+    GeneralOptions base;  // extension | human-readable | ignore-case | recursive
     char *order;
     bool reverse;
     bool dir_first;
