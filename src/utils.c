@@ -2,9 +2,11 @@
 
 // Libraries
 #include <errno.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 
 // Headers
@@ -61,7 +63,7 @@ char *get_valid_directory(const char *path)
 }
 
 // Prints a more readable output message
-void formatted_output(size_t total_size)
+char *formatted_output(off_t total_size)
 {
     static const char *sizes[] = {"bytes", "kilobytes", "megabytes", "gigabytes", "terabytes", "petabytes"};
     const float buffer = 1024.0;
@@ -78,13 +80,45 @@ void formatted_output(size_t total_size)
     // Limits index to 5
     index = (index < 5) ? index : 5;
 
-    printf("Total size: %.2f %s\n", result, sizes[index]);
+    char *str;
+    asprintf(&str, "%.2f %s", result, sizes[index]);
+    return str;
 }
 
-// Gets extension
-char *get_extension(char *name)
+// Gets extension without .
+const char *get_extension(const char *name)
 {
     const char *dot = strrchr(name, '.');
     const char *ext = (dot != NULL) ? dot + 1 : "";
     return ext;
+}
+
+// Checks for help flag
+bool check_help(int argc, char *argv)
+{
+    if (argc == 3)
+    {
+        if (strcasecmp(argv, "-h") == 0 ||
+            strcasecmp(argv, "--help") == 0 ||
+            strcasecmp(argv, "help") == 0)
+            {
+                return true;
+            }
+    }
+
+    return false;
+}
+
+// Checks for valid sort method
+bool check_sort(char *sort, const char **sorts, size_t len)
+{
+    for (size_t i = 0; i < len; i++)
+    {
+        if (strcasecmp(sort, sorts[i]) == 0)
+        {
+            return true;
+        }
+    }
+
+    return false;
 }

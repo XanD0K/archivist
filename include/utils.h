@@ -4,11 +4,14 @@
 // Libraries
 #include <dirent.h>
 #include <stddef.h>
+#include <sys/types.h>
 
 // Prototypes
 DIR *open_directory(const char *path);
 char *get_valid_directory(const char *path);
-void formated_output(size_t total_size);
-char *get_extension(char *name);
+char *formatted_output(off_t total_size);
+const char *get_extension(const char *name);
+bool check_help(int argc, char *argv);
+bool check_sort(char *sort, const char **sorts, size_t len);
 
 #endif
