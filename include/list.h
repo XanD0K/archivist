@@ -6,14 +6,13 @@
 
 #include "cli_opts.h"
 
-// Type/Alias
-typedef int (*SortFunc)(const struct dirent **a, const struct dirent **b);
+// Alias of a pointer to a function
+typedef int (*SortList)(const struct dirent **a, const struct dirent **b);
 
 // Structure to all CLI flags of 'list' functionality
 typedef struct
 {
-    GeneralOptions base;  // extension | human-readable | ignore-case | recursive
-    char *order;
+    GeneralOptions base;  // extension | human-readable | ignore-case | recursive | sort    
     bool reverse;
     bool dir_first;
 } ListOptions;
