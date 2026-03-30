@@ -27,7 +27,7 @@ static void report_element(char *current_path, const struct dirent *namelist, Re
                            Extension *ext, size_t *ext_counter, size_t *ext_capacity,
                            size_t *total_files, off_t *total_size);
 static ssize_t find_extension_in_list(const char *extension, Extension *ext, size_t ext_counter);
-static void reallocates_list(Extension **ext, size_t ext_counter);
+static void reallocates_list(Extension **ext, size_t old_capacity);
 static void updates_list(Extension *ext, const char *extension_name, size_t ext_counter, size_t index,
                          off_t size, size_t *total_files, off_t *total_size);
 static void print_report_output(Extension *ext, size_t ext_counter, bool human_readable,
@@ -65,22 +65,23 @@ int handle_report(int argc, char **argv)
     // Parses CLI arguments
     ReportOptions opts = parse_report_opts(argc, argv, opt_start);
 
-    // All sort options
-    const char *sorts[] = {"name", "size", "quantity"};
-
     // Default sort method
     SortReport sorter = cmp_name;
 
-    if (strcasecmp(opts.base.sort, "name") == 0)
+    if (opts.base.sort != NULL &&  strcasecmp(opts.base.sort, "name") != 0)
     {
+        // All sort options
+        const char *sorts[] = {"name", "size", "quantity"};
         size_t len = sizeof(sorts) / sizeof(sorts[0]);
+
         if (!check_sort(opts.base.sort, sorts, len))
         {
             errno = EINVAL;
             fprintf(stderr, "Invalid sort argument: %s\n"
-                            "Help for list command: ./archisvist report help\n"
+                            "Help for report command: ./archivist report help\n"
                             "Usage: ./archivist report [DIRECTORY] [FLAGS]\n",
                             strerror(errno));
+            free(base_dir);
             return 5;
         }
 
@@ -92,6 +93,7 @@ int handle_report(int argc, char **argv)
     int n = scandir(base_dir, &namelist, NULL, alphasort);
     if (n == -1)
     {
+        free(base_dir);
         perror("scandir");
         return 6;
     }
@@ -104,6 +106,8 @@ int handle_report(int argc, char **argv)
     {
         errno = ENOMEM;
         fprintf(stderr, "Error on memory allocation: %s\n", strerror(errno));
+        free(base_dir);
+        free(namelist);
         return 10;
     }
 
@@ -120,9 +124,10 @@ int handle_report(int argc, char **argv)
             free(namelist[i]);
             if (ext == NULL)
             {
-                free(namelist);
                 errno = ENOMEM;
                 fprintf(stderr, "Error on memory allocation: %s\n", strerror(errno));
+                free(base_dir);
+                free(namelist);
                 return 10;
             }
         }
@@ -141,9 +146,9 @@ int handle_report(int argc, char **argv)
             user_ext = realloc(user_ext, (user_ext_counter + 1) * sizeof(Extension));
             if (user_ext == NULL)
             {
-                free(namelist);
                 errno = ENOMEM;
                 fprintf(stderr, "Error on memory allocation: %s\n", strerror(errno));
+                free(namelist);
                 return 10;
             }
             user_ext[user_ext_counter].extension = strdup(token);
@@ -197,7 +202,7 @@ static void print_report_help(void)
         "       displays information only of specified extensions\n"
         "       if more than 1 extension, separate them with a comma\n"
         "   -h | --human-readable\n"
-        "       outputs size in a more reabable format\n"
+        "       outputs size in a more readable format\n"
         "       default: off\n"
         "   -s | --sort <name | size | quantity>\n"
         "       sorts output by:\n"
@@ -230,7 +235,6 @@ static ReportOptions parse_report_opts(int argc, char **argv, int opt_start)
         {"human-readable", no_argument, 0, 'h'},
         {"sort", required_argument, 0, 's'},
         {"recursive", no_argument, 0, 'R'},
-
         {NULL, 0, NULL, 0}
     };
 
@@ -257,6 +261,7 @@ static ReportOptions parse_report_opts(int argc, char **argv, int opt_start)
             case 's':
             {
                 opts.base.sort = optarg;
+                break;
             }
             case 'R':
             {
@@ -406,14 +411,14 @@ static void report_element(char *current_path, const struct dirent *namelist, Re
         // Adds new extension to list
         updates_list(ext, extension_name, *ext_counter, *ext_counter,
                      st.st_size, total_files, total_size);
+        // Increments extension's counter
+        (*ext_counter)++;
     }
     else
     {
         updates_list(ext, extension_name, *ext_counter, (size_t)index,
                      st.st_size, total_files, total_size);
     }
-    // Increments extension's counter and
-    (*ext_counter)++;
 
     return;
 }

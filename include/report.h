@@ -14,7 +14,7 @@ typedef int (*SortReport)(const void *a, const void *b);
 // Structure to all CLI flags of 'report' functionality
 typedef struct
 {
-    GeneralOptions base;  // extension | human-readable | recursive
+    GeneralOptions base;  // extension | human-readable | recursive | sort
     
 } ReportOptions;
 
