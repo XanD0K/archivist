@@ -98,6 +98,7 @@ int handle_list(int argc, char **argv)
 
     if (n == -1)
     {
+        free(base_dir);
         perror("scandir");
         return 6;
     }
@@ -157,7 +158,7 @@ static void print_list_help(void)
         "\n"
         "Flags:\n"
         "   -h | --human-readable\n"
-        "       outputs size of files/dir in a more reabable format\n"
+        "       outputs size of files/dir in a more readable format\n"
         "       default: off\n"
         "   -i | --ignore-case\n"
         "       distinguish case\n"
@@ -204,25 +205,25 @@ static ListOptions parse_list_opts(int argc, char **argv, int opt_start)
     // Sets array of flags
     static struct option long_opts[] =
     {
-        {"sort", required_argument, 0, 's'},
+        {"human-readable", no_argument, 0, 'h'},
+        {"ignore-case", no_argument, 0, 'i'},
         {"reverse", no_argument, 0, 'r'},
+        {"sort", required_argument, 0, 's'},
         {"recursive", no_argument, 0, 'R'},
         {"dir-first", no_argument, 0, 0},
-        {"ignore-case", no_argument, 0, 'i'},
-        {"human-readable", no_argument, 0, 'h'},
         {NULL, 0, NULL, 0}
     };
 
     int opt = 0;
     int long_index = 0;
-    char *short_opts = "s:rRih";
+    char *short_opts = "hirs:R";
 
     // Skips command and directory in CLI arguments
     optind = opt_start;
 
     while ((opt = getopt_long(argc, argv, short_opts, long_opts, &long_index)) != -1)
     {
-        switch(opt)
+        switch (opt)
         {
             // Human readable
             case 'h':
