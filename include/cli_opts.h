@@ -2,8 +2,9 @@
 #define CLI_OPTS_H
 
 #include <stdbool.h>
+#include <sys/types.h>  // off_t
 
-// Structure of all CLI flags shared among files
+// General flags shared across files
 typedef struct
 {
     char *extension;
@@ -13,4 +14,12 @@ typedef struct
     char *sort;
 } GeneralOptions;
 
+// Filter flags shared across files
+typedef struct
+{
+    bool contains;
+    off_t min_size;
+    off_t max_size;
+    char *type;
+} FilterOptions;
 #endif

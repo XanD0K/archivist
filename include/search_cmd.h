@@ -2,17 +2,14 @@
 #define SEARCH_H
 
 #include <stdbool.h>
-#include <sys/types.h>
 
 #include "cli_opts.h"
 
+// Structure to all CLI flags of 'search' functionality
 typedef struct
 {
     GeneralOptions base;  // extension | ignore-case | recursive
-    bool contains;
-    off_t min_size;
-    off_t max_size;
-    char *type;
+    FilterOptions filter;  // contains | min_size | max_size | type
 } SearchOptions;
 
 // Prototypes

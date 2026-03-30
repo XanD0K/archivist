@@ -5,6 +5,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <getopt.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,7 +19,6 @@
 // Prototypes
 static void print_search_help(void);
 static SearchOptions parse_search_opts(int argc, char **argv, int opt_start, bool *size_err);
-static off_t get_size(const char *size);
 static void search_element(char *current_path, const char *base_dir, SearchOptions opts, const struct dirent *namelist, const char *searched, size_t *counter, bool *printed);
 static bool match_name(const char *current_name, const char *searched, bool contains, bool ignore_case);
 static bool match_extension(const char *current_name, const char *ext);
@@ -29,10 +29,7 @@ static bool match_size(const off_t max_size, const off_t min_size, struct stat s
 int handle_search(int argc, char **argv)
 {
     // Checks for 'help' flag
-    if (argc == 3 &&
-        (strcasecmp(argv[2], "help") == 0 ||
-         strcasecmp(argv[2], "-h") == 0 ||
-         strcasecmp(argv[2], "--help") == 0))
+    if (check_help(argc, argv[2]))
     {
         // Prints help message for 'search' functionality
         print_search_help();
@@ -68,6 +65,7 @@ int handle_search(int argc, char **argv)
     SearchOptions opts = parse_search_opts(argc, argv, opt_start, &size_err);
     if (size_err)
     {
+        free(base_dir);
         errno = EIO;
         fprintf(stderr, "Invalid size: %s", strerror(errno));
         return 9;
@@ -78,6 +76,7 @@ int handle_search(int argc, char **argv)
 
     if (n == -1)
     {
+        free(base_dir);
         perror("scandir");
         return 6;
     }
@@ -110,7 +109,7 @@ int handle_search(int argc, char **argv)
     return 0;
 }
 
-// Prints explanations of 'search' functionality
+// Prints explanation of 'search' functionality
 static void print_search_help(void)
 {
     puts(
@@ -163,19 +162,20 @@ static SearchOptions parse_search_opts(int argc, char **argv, int opt_start, boo
 
     static struct option long_opts[] =
     {
-        {"recursive", no_argument, 0, 'R'},
-        {"ignore-case", no_argument, 0, 'i'},
         {"contains", no_argument, 0, 'c'},
-        {"min-size", required_argument, 0, 0},
-        {"max-size", required_argument, 0, 0},
-        {"type", required_argument, 0, 't'},
         {"extension", required_argument, 0, 'e'},
+        {"ignore-case", no_argument, 0, 'i'},
+        {"type", required_argument, 0, 't'},
+        {"recursive", no_argument, 0, 'R'},
+        {"max-size", required_argument, 0, 0},
+        {"min-size", required_argument, 0, 0},
+        
         {NULL, 0, NULL, 0}
     };
 
     int opt = 0;
     int long_index = 0;
-    char *short_opts = "Rict:e:";
+    char *short_opts = "ce:it:R";
 
     optind = opt_start;
 
@@ -195,12 +195,12 @@ static SearchOptions parse_search_opts(int argc, char **argv, int opt_start, boo
             }
             case 'c':
             {
-                opts.contains = true;
+                opts.filter.contains = true;
                 break;
             }
             case 't':
             {
-                opts.type = optarg;
+                opts.filter.type = optarg;
                 break;
             }
             case 'e':
@@ -212,13 +212,13 @@ static SearchOptions parse_search_opts(int argc, char **argv, int opt_start, boo
             {
                 if (strcmp(long_opts[long_index].name, "min-size") == 0)
                 {
-                    opts.min_size = get_size(optarg);
+                    opts.filter.min_size = get_size(optarg);
                 }
                 else if (strcmp(long_opts[long_index].name, "max-size") == 0)
                 {
-                    opts.max_size = get_size(optarg);
+                    opts.filter.max_size = get_size(optarg);
                 }
-                if (opts.max_size == -1 || opts.min_size == -1)
+                if (opts.filter.max_size == -1 || opts.filter.min_size == -1)
                 {
                     *size_err = true;
                 }
@@ -232,54 +232,6 @@ static SearchOptions parse_search_opts(int argc, char **argv, int opt_start, boo
     }
 
     return opts;
-}
-
-static off_t get_size(const char *size)
-{
-    const off_t BUFFER = 1024;
-    char *ptr;
-    long num = strtol(size, &ptr, 10);
-    errno = 0;
-    if (errno == EINVAL || errno == ERANGE)
-    {
-        perror("strtol");
-        return -1;
-    }
-    if (num < 0)
-    {
-        fprintf(stderr, "Size can't be negative: %ld\n", num);
-        return -1;
-    }
-    if (ptr == size)
-    {
-        fprintf(stderr, "No digits were found\n");
-        return -1;
-    }
-
-    num = (off_t)num;
-
-    if(ptr == NULL || strcasecmp(ptr, "B") == 0)
-    {
-        return num;
-    }
-    else if (strcasecmp(ptr, "K") == 0 || strcasecmp(ptr, "KB") == 0)
-    {
-        return num * BUFFER;
-    }
-    else if (strcasecmp(ptr, "M") == 0 || strcasecmp(ptr, "MB") == 0)
-    {
-        return num * BUFFER * BUFFER;
-    }
-    else if (strcasecmp(ptr, "G") == 0 || strcasecmp(ptr, "GB") == 0)
-    {
-        return num * BUFFER * BUFFER * BUFFER;
-    }
-    else if (strcasecmp(ptr, "T") == 0 || strcasecmp(ptr, "TB") == 0)
-    {
-        return num * BUFFER * BUFFER * BUFFER * BUFFER;
-    }
-
-    return -1;
 }
 
 // Searches for an element
@@ -317,7 +269,7 @@ static void search_element(char *current_path, const char *base_dir, SearchOptio
     }
 
     // Checks for name equality
-    if (strcmp(namelist->d_name, "*") != 0 && !match_name(namelist->d_name, searched, opts.contains, opts.base.ignore_case))
+    if (strcmp(namelist->d_name, "*") != 0 && !match_name(namelist->d_name, searched, opts.filter.contains, opts.base.ignore_case))
     {
         return;
     }
@@ -329,13 +281,13 @@ static void search_element(char *current_path, const char *base_dir, SearchOptio
     }
 
     // Checks for element's type
-    if (opts.type && !match_type(opts.type, st))
+    if (opts.filter.type && !match_type(opts.filter.type, st))
     {
         return;
     }
 
     // Checks for size
-    if ((opts.max_size || opts.min_size) && !match_size(opts.max_size, opts.min_size, st))
+    if ((opts.filter.max_size || opts.filter.min_size) && !match_size(opts.filter.max_size, opts.filter.min_size, st))
     {
         return;
     }
