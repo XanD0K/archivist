@@ -1,3 +1,4 @@
+// Libraries
 #include <errno.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -6,8 +7,10 @@
 #include <string.h>
 #include <strings.h>
 
+// Headers
 #include "commands.h"
 #include "list.h"
+#include "report.h"
 #include "search_cmd.h"
 #include "utils.h"
 
@@ -21,7 +24,9 @@ static bool check_args_count(int argc, ptrdiff_t index);
 const CommandEntry cmd_table[] = 
 {
     {"list", handle_list, 2, 8},
-    {"search", handle_search, 3, 11},
+    {"report", handle_report, 2, 9},
+    {"search", handle_search, 3, 11},    
+    {"tree", handle_tree, 2, 3},
 
     /*
     {"backup", handle_backup, 4, 4},
@@ -30,9 +35,8 @@ const CommandEntry cmd_table[] =
     {"log", handle_log, 2, 2},
     {"move", handle_move, 4, 5},
     {"rename", handle_rename, 3, 5},
-    {"report", handle_report, 3, 3},
+    
     {"restore", handle_restore, 4, 5},
-    {"tree", handle_tree, 3, 3},
     */
     {NULL, NULL, 0, 0}
 };
