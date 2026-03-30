@@ -1,7 +1,7 @@
 # Changelog
 
 
-## [Unreleased] - DATE
+## [VERSION] - DATE
 ### Added
 
 ### Changed
@@ -11,15 +11,48 @@
 ### Removed
 
 
-## [0.2.1] - 2026-03-25
+## [0.3.3] - 2026-03-29
 ### Added
-- `formatted_output()` function to improve output when `human-readable` flag is toggled on
+- Implemented `tree` feature
+- Created `FilterOptions` structure on `cli_opts.h`
+- Started development of `move` feature
+
+### Changed
+- `search` feature now uses new `FilterOptions` structure
+- Moved `get_size()` to `utils.c`
+
+
+## [0.3.2] - 2026-03-28
+### Added
+- `sort` flag for the `report` functionality, allowing `name`, `size` and `distance`
+
+### Changed
+- `check_sort()` is now a reusable helper function
+
+### Removed
+- `open_directory()` was removed from `utils.c` (by using `scandir()` it was not needed anymore)
+
+
+## [0.3.1] - 2026-03-27
+### Added
+- Fully implementation of `report` functionality
+
+### Changed
+- Created `check_help()` to check for command's `help` flag, removing repetition throughout files
+- Changed the array of pointers to the `Extension` struct (`Extension **ext`) to be an array of `Extension` structs (`Extension *ext`)
+
+### Fixed
+- Memory allocation, clean memory and free memory completely fixed
+
+
+## [0.3.0] - 2026-03-25
+### Added
+- `formatted_output()` to improve output when `human-readable` flag is toggled on
 - New flag for `list` and `report` functionalities: `--human-readable | -h`
 - First implementation of `report` feature
 
 ### Changed
-- Made `get_extension()` function to keep modularity among files
-
+- Made `get_extension()` to keep modularity among files
 
 ## [0.2.0] - 2026-03-24
 ### Added

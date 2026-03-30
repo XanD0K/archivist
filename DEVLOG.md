@@ -10,15 +10,46 @@
 
 ## [DATE]
 **Plans**
+- Development of `move` functionality
+
+**Challenges**
+
+**Progress**
+- Created `FilterOptions` structure with filter flags, currently being used in `search`, and will be implemented on `move`
+
+
+## [2026-03-29]
+**Plans**
+- Implement `tree` feature
+
+**Challenges**
+- Understand how to propagate prefix across multiple subdirectories
+
+**Progress**
+- `tree` functionality is just a good combination of style and recursiveness. First I made recursion works, and just then I included the symbols (`├──` `└──` `│`) and indentations, always propagating to next subdirectory
+- `tree` functionality fully implemented
+
+
+## [2026-03-27]
+**Plans**
 - Implement `report` feature
 
 **Challenges**
 - Finding the best data structure to keep track of all extensions efficiently
+- Free memory on all cases, specially when using `strdup()` and `asprintf()`
+- Still confusing dealing with different types
 
 **Progress**
 - First thought was to use an ordered linked list to manage all extensions
 - Although it seemed like a solid idea, Grok (xAI) suggested using a Dynamic Array instead
-- On pset5 'speller', among all implementations I've made, one of them was a Dynamic Hash Table, that doubled its size when a specific factor was reached
+- On pset5 'speller', among all implementations I've made, one of them was a Dynamic Hash Table, that doubled its size when a specific factor was reached. Used the same strategy to implement a Dynamic Array that holds every found extension
+- I first tried an array of pointers to the `Extension` struct (`Extension **ext`)
+- Then I decided to move to an array of `Extension` structs (`Extension *ext`), keeping code cleaner and memory allocation simpler
+- Fixed problems with memory leak specifically with `strdup()` and `asprintf()`. I didn't know I should `free()` strings returned by those functions:
+    - https://manual.cs50.io/3/strdup
+    - https://manual.cs50.io/3/asprintf
+- Fixed problems when comparing and making operations with different types: `size_t` with `int`, `const char *` with `char *`, `ssize_t` with `size_t`. Needs to pay more attention about the types I declare and the casts needed to make all operations work.
+- `report` feature is fully implemented
 
 
 ## [2026-03-24]
