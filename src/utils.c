@@ -12,18 +12,6 @@
 // Headers
 #include "utils.h"
 
-// Opens directory
-DIR *open_directory(const char *path)
-{
-    DIR *dir = opendir(path);
-    if (!dir)
-    {
-        fprintf(stderr, "Couldn't open directory %s: %s\n", path, strerror(errno));
-        return NULL;
-    }
-    return dir;
-}
-
 // Checks for valid directory, setting (.) as default, and removing trailing /
 char *get_valid_directory(const char *path)
 {
@@ -121,4 +109,53 @@ bool check_sort(char *sort, const char **sorts, size_t len)
     }
 
     return false;
+}
+
+off_t get_size(char *size)
+{
+    const off_t BUFFER = 1024;
+    char *ptr;
+    long num = strtol(size, &ptr, 10);
+    errno = 0;
+
+    if (errno == EINVAL || errno == ERANGE)
+    {
+        perror("strtol");
+        return -1;
+    }
+    if (num < 0)
+    {
+        fprintf(stderr, "Size can't be negative: %ld\n", num);
+        return -1;
+    }
+    if (ptr == size)
+    {
+        fprintf(stderr, "No digits were found\n");
+        return -1;
+    }
+
+    num = (off_t)num;
+
+    if(ptr == NULL || strcasecmp(ptr, "B") == 0)
+    {
+        return num;
+    }
+    else if (strcasecmp(ptr, "K") == 0 || strcasecmp(ptr, "KB") == 0)
+    {
+        return num * BUFFER;
+    }
+    else if (strcasecmp(ptr, "M") == 0 || strcasecmp(ptr, "MB") == 0)
+    {
+        return num * BUFFER * BUFFER;
+    }
+    else if (strcasecmp(ptr, "G") == 0 || strcasecmp(ptr, "GB") == 0)
+    {
+        return num * BUFFER * BUFFER * BUFFER;
+    }
+    else if (strcasecmp(ptr, "T") == 0 || strcasecmp(ptr, "TB") == 0)
+    {
+        return num * BUFFER * BUFFER * BUFFER * BUFFER;
+    }
+
+    return -1;
 }
