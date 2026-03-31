@@ -475,12 +475,12 @@ static void check_element(struct dirent *namelist, const char *current_path, siz
     if (opts.base.recursive)
     {
         // Prints file's name
-        const char *sufix = new_path + strlen(base_dir);
-        if (*sufix == '/')
+        const char *suffix = new_path + strlen(base_dir);
+        if (*suffix == '/')
         {
-            sufix++;
+            suffix++;
         }
-        printf("%s\n", sufix);
+        printf("%s\n", suffix);
     }
 
     return;
