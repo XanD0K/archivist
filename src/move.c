@@ -4,18 +4,25 @@
 #include <dirent.h>
 #include <errno.h>
 #include <getopt.h>
+#include <limits.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
 // Hedaers
 #include "move.h"
 #include "utils.h"
+#include "utils_filter.h"
 
 // Prototypes
 static void print_move_help(void);
+static char *get_valid_destination(const char *path);
 static MoveOptions parse_move_opts(int argc, char*argv, int opt_start, bool *size_err);
+static void move_element(char *current_dir, char *base_dir, char *dst_dir, MoveOptions opts, struct dirent *namelist);
+static int check_directory_size(char *dst, size_t len, const char *prefix, const char *suffix);
 
 // Moves files and subdirectories
 int handle_move(int argc, char **argv)
@@ -38,14 +45,15 @@ int handle_move(int argc, char **argv)
         dir_path_dst = argv[3];
     }
 
-    // Validates directories
+    // Validates base directory
     char *base_dir = get_valid_directory(dir_path_src);
     if (!base_dir)
     {
         return 4;
     }
-    char *dst_dir = get_valid_directory(dir_path_dst);
-    if (!base_dir)
+    // Checks/Creates destination directory
+    char *dst_dir = get_valid_destination(dir_path_dst);
+    if (!dst_dir)
     {
         free(base_dir);
         return 4;
@@ -77,7 +85,7 @@ int handle_move(int argc, char **argv)
     {
         if (strcmp(namelist[i]->d_name, ".") != 0 && strcmp(namelist[i]->d_name, "..") !=0)
         {
-            // TODO: move_element()
+            move_element(base_dir, base_dir, dst_dir, opts, namelist[i]);
             free(namelist[i]);
         }
     }
@@ -97,12 +105,11 @@ static void print_move_help(void)
         "First DIRECTORY is the ORIGIN. It defaults to current directory (.)\n"
         "Second DIRECTORY is the DESTINATION. It is a required argument\n"
         "If destination directory doesn't exist, it will be created\n"
-        "If file already exists on destination, it will be renamed (e.g. file.txt → file_2.txt)\n"
+        "If file already exists on destination, new file will be renamed (e.g. file.txt → file_2.txt)\n"
         "\n"
         "Flags:\n"
         "   -c | --contains\n"
         "       moves only files/subdirectories that contain a word/pattern\n"
-        "       default: off\n"
         "   -d | --dry-run\n"
         "       simulates changes, showing the result\n"
         "       default: off\n"
@@ -119,7 +126,7 @@ static void print_move_help(void)
         "       if file/subdirectory alredy exists, it won't be moved\n"
         "       default: off\n"
         "   -t | --type\n"
-        "       moves only specific type (file|dir|slink)\n"
+        "       moves only specific type (file | dir | slink)\n"
         "   -v | --verbose\n"
         "       states every moved file/subdirectory\n"
         "       default: off\n"
@@ -134,7 +141,7 @@ static void print_move_help(void)
         "       e.g. 20 | 50K | 30GB | 200T\n"
         "\n"
         "Attention:\n"
-        "'force' and 'skip' flags are excludent. If both are provided, none will work\n"
+        "'force' and 'skip' flags are excludent. If both are provided, the last one will prevail\n"
         "\n"
         "Examples:\n"
         "   ./archivist move folder2/\n"
@@ -147,6 +154,89 @@ static void print_move_help(void)
         "\n"
         "All commands: ./archivist help"
     );
+}
+
+// Creates destination directory
+static char *get_valid_destination(const char *path)
+{
+    // Checks for valid directory
+    if (!path || path[0] == '\0')
+    {
+        errno = ENOTDIR;
+        fprintf(stderr, "Error accessing diretory %s: %s\n", path, strerror(errno));
+        return NULL;
+    }
+
+    // Copies original path
+    char *cpy_path = strdup(path);
+    if (!cpy_path)
+    {
+        fprintf(stderr, "Error duplicating diretory %s: %s\n", path, strerror(errno));
+        return NULL;
+    }
+
+    // Creates starting path
+    char *start_path = (cpy_path[0] == '/') ? "" : ".";
+    char current_path[PATH_MAX];
+    if (check_directory_size(current_path, sizeof(current_path), start_path, NULL) == -1)
+    {
+        free(cpy_path);
+        fprintf(stderr, "Path too long: %s\n", strerror(errno));
+        return NULL;
+    }
+
+    // Iterates through every directory
+    char *token = strtok(cpy_path, "/");
+    while (token != NULL)
+    {
+        // Creates new path
+        char new_path[PATH_MAX];
+        if (check_directory_size(new_path, sizeof(new_path), current_path, token) == -1)
+        {
+            free(cpy_path);
+            fprintf(stderr, "Path too long: %s\n", strerror(errno));
+            return NULL;
+        }
+
+        // Creates directory
+        if (mkdir(new_path, 0755) != 0)
+        {
+            if (errno != EEXIST)
+            {
+                free(cpy_path);
+                perror("mkdir");
+                return NULL;
+            }
+        }
+
+        // Updates current path for recursiveness
+        if (check_directory_size(current_path, sizeof(current_path), new_path, NULL) == -1)
+        {
+            free(cpy_path);
+            fprintf(stderr, "Path too long: %s\n", strerror(errno));
+            return NULL;
+        }
+        token = strtok(NULL, "/");
+    }
+
+    free(cpy_path);
+    return strdup(current_path);
+}
+
+// Checks if directory will overflow maximum size
+static int check_directory_size(char *dst, size_t len, const char *prefix, const char *suffix)
+{
+    int ret = (suffix && suffix[0])
+        ? snprintf(dst, len, "%s/%s", prefix, suffix)
+        : snprintf(dst, len, "%s", prefix);
+
+    if (ret < 0 || (size_t)ret >= len)
+    {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+
+    return 0;
 }
 
 // Parses through CLI arguments for 'move' functionality
@@ -181,7 +271,7 @@ static MoveOptions parse_move_opts(int argc, char*argv, int opt_start, bool *siz
         {
             case 'c':
             {
-                opts.filter.contains = true;
+                opts.contains = optarg;
                 break;
             }
             case 'd':
@@ -197,6 +287,7 @@ static MoveOptions parse_move_opts(int argc, char*argv, int opt_start, bool *siz
             case 'f':
             {
                 opts.force = true;
+                opts.skip = false;
                 break;
             }
             case 'i':
@@ -207,6 +298,7 @@ static MoveOptions parse_move_opts(int argc, char*argv, int opt_start, bool *siz
             case 's':
             {
                 opts.skip = true;
+                opts.force = false;
                 break;
             }
             case 't':
@@ -248,4 +340,81 @@ static MoveOptions parse_move_opts(int argc, char*argv, int opt_start, bool *siz
     }
     
     return opts;
+}
+
+static void move_element(char *current_path, char *base_dir, char *dst_dir, MoveOptions opts, struct dirent *namelist)
+{
+    if (strcmp(namelist->d_name, ".") == 0 || strcmp(namelist->d_name, "..") == 0)
+    {
+        return;
+    }
+
+    struct stat st;
+    char new_path[PATH_MAX];
+    snprintf(new_path, sizeof(new_path), "%s/%s", current_path, namelist->d_name);
+    if (stat(new_path, &st) != 0)
+    {
+        return;
+    }
+
+    // Recursively calls move function on subdirectories
+    if (opts.base.recursive && S_ISDIR(st.st_mode))
+    {
+        struct dirent **entry;
+        int n = scandir(new_path, &entry, NULL, alphasort);
+        if (n == -1)
+        {
+            return;
+        }
+
+        for (int i = 0; i < n; i++)
+        {
+            move_element(new_path, base_dir, dst_dir, opts, entry[i]);
+            free(entry[i]);
+        }
+
+        free(entry);
+    }
+
+    // Checks for flags
+    // Checks for name equality (contains)
+    if (!match_name(opts.contains, namelist->d_name))
+    {
+        return;
+    }
+
+    // Checks for already existed file (force, skip)
+    if ((opts.force || opts.skip))
+
+    // Checks for extension
+    if (opts.base.extension && !match_extension(opts.base.extension, namelist->d_name))
+    {
+        return;
+    }
+
+    // Checks for element's type
+    if (opts.filter.type && !match_type(opts.filter.type, st.st_mode))
+    {
+        return;
+    }
+
+    // Checks for size
+    if ((opts.filter.max_size || opts.filter.min_size) && !match_size(opts.filter.max_size, opts.filter.min_size, st.st_size))
+    {
+        return;
+    }
+
+    opts.dry_run;
+    opts.filter;
+    opts.interactive;
+    opts.verbose;
+
+}
+
+// Checks if name matches
+static bool match_name(char *contains, const char *name)
+{
+    return (!contains || contains[0] == '\0')
+        ? strcasecmp(contains, name) == 0
+        : strcasestr(contains, name) == 0;
 }

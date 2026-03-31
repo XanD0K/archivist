@@ -8,7 +8,8 @@
 typedef struct
 {
     GeneralOptions base;  // extension | recursive
-    FilterOptions filter;  // contains | min_size | max_size | type
+    FilterOptions filter;  // min_size | max_size | type
+    char *contains;
     bool dry_run;
     bool force;
     bool interactive;
