@@ -9,7 +9,8 @@
 typedef struct
 {
     GeneralOptions base;  // extension | ignore-case | recursive
-    FilterOptions filter;  // contains | min_size | max_size | type
+    FilterOptions filter;  // min_size | max_size | type
+    bool contains;
 } SearchOptions;
 
 // Prototypes

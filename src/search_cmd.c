@@ -15,6 +15,7 @@
 // Headers
 #include "search_cmd.h"
 #include "utils.h"
+#include "utils_filter.h"
 
 // Prototypes
 static void print_search_help(void);
@@ -22,8 +23,6 @@ static SearchOptions parse_search_opts(int argc, char **argv, int opt_start, boo
 static void search_element(char *current_path, const char *base_dir, SearchOptions opts, const struct dirent *namelist, const char *searched, size_t *counter, bool *printed);
 static bool match_name(const char *current_name, const char *searched, bool contains, bool ignore_case);
 static bool match_extension(const char *current_name, const char *ext);
-static bool match_type(const char *type, struct stat st);
-static bool match_size(const off_t max_size, const off_t min_size, struct stat st);
 
 // Searches for a specific file/directory
 int handle_search(int argc, char **argv)
@@ -129,7 +128,7 @@ static void print_search_help(void)
         "       distinguish case\n"
         "       default: on\n"
         "   -t | --type\n"
-        "       includes only specific type (file|dir|slink)\n"
+        "       includes only specific type (file | dir | slink)\n"
         "   -R | --recursive\n"
         "       also search in subdirectories\n"
         "       default: off\n"
@@ -195,7 +194,7 @@ static SearchOptions parse_search_opts(int argc, char **argv, int opt_start, boo
             }
             case 'c':
             {
-                opts.filter.contains = true;
+                opts.contains = true;
                 break;
             }
             case 't':
@@ -269,36 +268,36 @@ static void search_element(char *current_path, const char *base_dir, SearchOptio
     }
 
     // Checks for name equality
-    if (strcmp(namelist->d_name, "*") != 0 && !match_name(namelist->d_name, searched, opts.filter.contains, opts.base.ignore_case))
+    if (strcmp(namelist->d_name, "*") != 0 && !match_name(namelist->d_name, searched, opts.contains, opts.base.ignore_case))
     {
         return;
     }
 
     // Checks for extension
-    if (opts.base.extension && !match_extension(namelist->d_name, opts.base.extension))
+    if (opts.base.extension && !match_extension(opts.base.extension, namelist->d_name))
     {
         return;
     }
 
     // Checks for element's type
-    if (opts.filter.type && !match_type(opts.filter.type, st))
+    if (opts.filter.type && !match_type(opts.filter.type, st.st_mode))
     {
         return;
     }
 
     // Checks for size
-    if ((opts.filter.max_size || opts.filter.min_size) && !match_size(opts.filter.max_size, opts.filter.min_size, st))
+    if ((opts.filter.max_size || opts.filter.min_size) && !match_size(opts.filter.max_size, opts.filter.min_size, st.st_size))
     {
         return;
     }
 
     // Prints found element
-    const char *sufix = new_path + strlen(base_dir);
-    if (*sufix == '/')
+    const char *suffix = new_path + strlen(base_dir);
+    if (*suffix == '/')
     {
-        sufix++;
+        suffix++;
     }
-    printf("%s\n", sufix);
+    printf("%s\n", suffix);
     (*counter)++;
     *printed = true;
     
@@ -318,46 +317,10 @@ static bool match_name(const char *current_name, const char *searched, bool cont
     return result != NULL;
 }
 
-// Checks if extension matches
 static bool match_extension(const char *current_name, const char *ext)
 {
     const char *ext_name = get_extension(current_name);
     const char *clean_ext = (ext[0] == '.') ? ext + 1 : ext;
 
     return (strcasecmp(ext_name, clean_ext) == 0);
-}
-
-// Checks if type matches
-static bool match_type(const char *type, struct stat st)
-{
-    if (strcasecmp(type, "f") == 0 || strcasecmp(type, "file") == 0)
-    {
-        return S_ISREG(st.st_mode);
-    }
-    else if (strcasecmp(type, "d") == 0 || strcasecmp(type, "dir") == 0 || strcasecmp(type, "directory") == 0)
-    {
-        return S_ISDIR(st.st_mode);
-    }
-    else if (strcasecmp(type, "sl") == 0 || strcasecmp(type, "slink") == 0 || strcasecmp(type, "symbolic-link") == 0)
-    {
-        return S_ISLNK(st.st_mode);
-    }
-    return false;
-}
-
-// Checks if size is between min and max
-static bool match_size(const off_t max_size, const off_t min_size, struct stat st)
-{
-    if (max_size != 0 && min_size != 0)
-    {
-        return (st.st_size > min_size && st.st_size < max_size);
-    }
-    else if (max_size != 0)
-    {
-        return (st.st_size < max_size);
-    }
-    else
-    {
-        return (st.st_size > min_size);
-    }
 }
