@@ -18,14 +18,6 @@ typedef struct
     
 } ReportOptions;
 
-// Structure for each extension
-typedef struct Extension
-{
-    char *extension;
-    size_t file_count;
-    off_t size;
-} Extension;
-
 // Prototypes
 int handle_report(int argc, char **argv);
 

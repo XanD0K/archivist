@@ -136,38 +136,26 @@ int handle_report(int argc, char **argv)
     free(base_dir);
 
     // Retrieves user's selected extensions (-e flag)
-    Extension *user_ext = NULL;
     size_t user_ext_counter = 0;
-    if (opts.base.extension != NULL)
-    {
-        char *token = strtok(opts.base.extension, ",");
-        while (token != NULL)
-        {
-            user_ext = realloc(user_ext, (user_ext_counter + 1) * sizeof(Extension));
-            if (user_ext == NULL)
-            {
-                errno = ENOMEM;
-                fprintf(stderr, "Error on memory allocation: %s\n", strerror(errno));
-                free(namelist);
-                return 10;
-            }
-            user_ext[user_ext_counter].extension = strdup(token);
-            user_ext[user_ext_counter].file_count = 0;
-            user_ext[user_ext_counter].size = 0;
-            user_ext_counter++;
-            token = strtok(NULL, ",");
-        }
+    Extension *user_ext = get_all_extensions(opts.base.extension, &user_ext_counter);    
 
-        // Populates user's array with data collected from the directory
-        for (size_t i = 0; i < user_ext_counter; i++)
+    if (user_ext == NULL)
+    {
+        errno = ENOMEM;
+        fprintf(stderr, "Error on memory allocation: %s\n", strerror(errno));
+        free(namelist);
+        return 10;
+    }
+
+    // Populates user's array with data collected from the directory
+    for (size_t i = 0; i < user_ext_counter; i++)
+    {
+        for (size_t j = 0; j < ext_counter; j++)
         {
-            for (size_t j = 0; j < ext_counter; j++)
+            if (strcasecmp(user_ext[i].extension, ext[j].extension) == 0)
             {
-                if (strcasecmp(user_ext[i].extension, ext[j].extension) == 0)
-                {
-                    user_ext[i].file_count = ext[j].file_count;
-                    user_ext[i].size = ext[j].size;
-                }
+                user_ext[i].file_count = ext[j].file_count;
+                user_ext[i].size = ext[j].size;
             }
         }
     }
@@ -242,6 +230,7 @@ static ReportOptions parse_report_opts(int argc, char **argv, int opt_start)
     int long_index = 0;
     char *short_opts = "e:hs:R";
 
+    // Defines starting index to search for arguments
     optind = opt_start;
 
     while ((opt = getopt_long(argc, argv, short_opts, long_opts, &long_index)) != -1)
@@ -389,7 +378,7 @@ static void report_element(char *current_path, const struct dirent *namelist, Re
     }
 
     // Gets extension for current element
-    const char *extension_name = get_extension(namelist->d_name);
+    const char *extension_name = get_clean_extension(namelist->d_name);
     // Checks if extension already exists
     ssize_t index = find_extension_in_list(extension_name, ext, *ext_counter);
     // Current extension doesn't exist in list
