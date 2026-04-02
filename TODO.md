@@ -11,11 +11,11 @@
 - [ ] Implement `log` feature
 - [ ] Implement `delete` feature
 - [ ] Implement `duplicate` feature
-- [-] Implement `move` feature
+- [ ] `move` feature → creates destination directory when validation fails
 - [ ] Implement `restore` feature
 - [ ] Helper function to get full path from a file/directory
 - [ ] Add more fields in the `search` feature output
-- [ ] Add `qsort()` on `report` functionality
+
 
 ## Refactoring tasks
 - [ ] Change `validade_command` to use `for` loop instead of `bsearch()`
@@ -43,4 +43,7 @@
 - [x] Add `human-readable` flag to `list` and `report` functionalities
 - [x] Refactor `formatted_output()` to outputs the formated size, instead of the whole output's message
 - [x] Implement `report` feature
+- [x] Add `qsort()` on `report` functionality
 - [x] Implement `tree` feature
+- [x] Modular function to retrieve extensions
+- [x] Implement `move` feature

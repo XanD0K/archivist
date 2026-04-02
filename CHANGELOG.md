@@ -1,10 +1,16 @@
 # Changelog
 
 
-## [VERSION] - DATE
+## [0.4.0] - 2026-04-01
 ### Added
+- Fully implemented `move` feature
+- Implemented `get_answer()` helper function to get user's input
 
 ### Changed
+- Moved `Extension` structure to `utils.h`, to be a modular struct
+- Created `utils_filter.c` to hold all helper functions related to filters and flags
+- Moved the logic to retrieve user's extension into `get_all_extensions()` helper function in `utils.c`
+- Moved the logic to get suffix from paths into `get_suffix()` helper function `utils.c`
 
 ### Fixed
 

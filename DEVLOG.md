@@ -10,12 +10,25 @@
 
 ## [DATE]
 **Plans**
-- Development of `move` functionality
-
+- Implement `delete` feature
 **Challenges**
 
 **Progress**
-- Created `FilterOptions` structure with filter flags, currently being used in `search`, and will be implemented on `move`
+
+
+## [2026-04-01]
+**Plans**
+- Implement `move` feature
+
+**Challenges**
+- Comprehend the order in which recursion should occur → one directory must be created before moving to the next subdirectory
+- Understand which filters should be applied to directories and which one should be applied to files
+
+**Progress**
+- Created `FilterOptions` structure with filter flags, currently being used in `search`, and will also be implemented on `move`
+- Created `get_valid_destination()`, that recursivelly creates the destination directory
+- For every directory created on destinarion, I check path's size to prevent overflow and truncation with `snprintf()`
+- Fully implemented `move` feature by improving UX with `dry-run`, `interactive` and `verbose` flags
 
 
 ## [2026-03-29]
