@@ -10,6 +10,7 @@
 #include <sys/stat.h>
 
 // Headers
+#include "cli_opts.h"
 #include "utils.h"
 
 // Checks for valid directory, setting (.) as default, and removing trailing /
@@ -42,7 +43,7 @@ char *get_valid_directory(const char *path)
 
     // Ensures path has no trailing /
     size_t len = strlen(base_dir);
-    if (len > 0 && base_dir[len - 1] == '/')
+    if (len > 1 && base_dir[len - 1] == '/')
     {
         base_dir[len - 1] = '\0';
     }
@@ -74,14 +75,49 @@ char *formatted_output(off_t total_size)
 }
 
 // Gets extension without .
-const char *get_extension(const char *name)
+const char *get_clean_extension(const char *name)
 {
     const char *dot = strrchr(name, '.');
     const char *ext = (dot != NULL) ? dot + 1 : "";
     return ext;
 }
 
-// Checks for help flag
+// Retrieves user's selected extensions (-e flag)   
+Extension *get_all_extensions(char *exts, size_t *ext_count)
+{
+    if (exts == NULL || exts[0] == '\0')
+    {
+        return NULL;
+    }
+
+    Extension *output_ext = NULL;
+    size_t ext_counter = 0;
+    char *exts_cpy = strdup(exts);
+    char *token = strtok(exts_cpy, ",");
+    while (token != NULL)
+    {
+        output_ext = realloc(output_ext, (ext_counter + 1) * sizeof(Extension));
+        if (output_ext == NULL)
+        {
+            for (size_t i = 0; i < ext_counter; i++)
+            {
+                free(output_ext->extension);
+            }
+            free(output_ext);
+            return NULL;
+        }
+        output_ext[ext_counter].extension = strdup(token);
+        output_ext[ext_counter].file_count = 0;
+        output_ext[ext_counter].size = 0;
+        (*ext_count)++;
+
+        token = strtok(NULL, ",");
+    }
+
+    return output_ext;
+}
+
+// Checks for 'help' flag
 bool check_help(int argc, char *argv)
 {
     if (argc == 3)
@@ -111,6 +147,7 @@ bool check_sort(char *sort, const char **sorts, size_t len)
     return false;
 }
 
+// Converts user's input to off_t size
 off_t get_size(char *size)
 {
     const off_t BUFFER = 1024;
@@ -158,4 +195,48 @@ off_t get_size(char *size)
     }
 
     return -1;
+}
+
+// Gets directory's suffix
+const char *get_suffix(char newpath[], const char *base_dir)
+{
+    const char *suffix = newpath + strlen(base_dir);
+
+    return (*suffix == '/') ? suffix++ : suffix;
+}
+
+// Gets user's input
+bool get_answer(const char *prompt)
+{
+    while (1)
+    {
+        printf("%s [y/n]\n", prompt);
+        fflush(stdout);
+
+        char input[4];
+        if (fgets(input, sizeof(input), stdin) == NULL)
+        {
+            return false;
+        }
+        
+        // Cleans input (removes \n)
+        input[strcspn(input, "\n")] = '\0';
+
+        // Cleans buffer
+        int c;
+        while ((c = getchar()) != '\n' && c != EOF)
+            ;
+
+        if (strcasecmp(input, "YES") == 0 || strcasecmp(input, "Y") == 0)
+        {
+            return true;
+        }
+        
+        if (strcasecmp(input, "NO") == 0 || strcasecmp(input, "N") == 0)
+        {
+            return false;
+        }
+
+        printf("Invalid answer! Say YES (Y) or NO (N)\n");
+    }
 }
