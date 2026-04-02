@@ -176,6 +176,7 @@ static SearchOptions parse_search_opts(int argc, char **argv, int opt_start, boo
     int long_index = 0;
     char *short_opts = "ce:it:R";
 
+    // Defines starting index to search for arguments
     optind = opt_start;
 
     while ((opt = getopt_long(argc, argv, short_opts, long_opts, &long_index)) != -1)
@@ -292,11 +293,7 @@ static void search_element(char *current_path, const char *base_dir, SearchOptio
     }
 
     // Prints found element
-    const char *suffix = new_path + strlen(base_dir);
-    if (*suffix == '/')
-    {
-        suffix++;
-    }
+    const char *suffix = get_suffix(new_path, base_dir);
     printf("%s\n", suffix);
     (*counter)++;
     *printed = true;
@@ -319,8 +316,13 @@ static bool match_name(const char *current_name, const char *searched, bool cont
 
 static bool match_extension(const char *current_name, const char *ext)
 {
-    const char *ext_name = get_extension(current_name);
-    const char *clean_ext = (ext[0] == '.') ? ext + 1 : ext;
+    const char *ext_name = get_clean_extension(current_name);
+    if (!ext_name || ext_name[0] == '\0')
+    {
+        return false;
+    }
+
+    const char *clean_ext = (strlen(ext) > 1 && ext[0] == '.') ? ext + 1 : ext;
 
     return (strcasecmp(ext_name, clean_ext) == 0);
 }

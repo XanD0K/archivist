@@ -218,7 +218,7 @@ static ListOptions parse_list_opts(int argc, char **argv, int opt_start)
     int long_index = 0;
     char *short_opts = "hirs:R";
 
-    // Skips command and directory in CLI arguments
+    // Defines starting index to search for arguments
     optind = opt_start;
 
     while ((opt = getopt_long(argc, argv, short_opts, long_opts, &long_index)) != -1)
@@ -392,8 +392,8 @@ static int cmp_ext(const struct dirent **a, const struct dirent **b)
         }
     }
 
-    const char *extA = get_extension((*a)->d_name);
-    const char *extB = get_extension((*b)->d_name);
+    const char *extA = get_clean_extension((*a)->d_name);
+    const char *extB = get_clean_extension((*b)->d_name);
 
     int result = strcasecmp(extA, extB);
 
@@ -475,11 +475,7 @@ static void check_element(struct dirent *namelist, const char *current_path, siz
     if (opts.base.recursive)
     {
         // Prints file's name
-        const char *suffix = new_path + strlen(base_dir);
-        if (*suffix == '/')
-        {
-            suffix++;
-        }
+        const char *suffix = get_suffix(new_path, base_dir);
         printf("%s\n", suffix);
     }
 
