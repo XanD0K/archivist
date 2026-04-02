@@ -1,8 +1,10 @@
 #ifndef MOVE_H
 #define MOVE_H
 
+// Libraries
 #include <stdbool.h>
 
+// Headers
 #include "cli_opts.h"
 
 typedef struct
