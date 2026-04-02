@@ -17,9 +17,9 @@ typedef struct
 // Filter flags shared across files
 typedef struct
 {
-    bool contains;
     off_t min_size;
     off_t max_size;
     char *type;
 } FilterOptions;
+
 #endif

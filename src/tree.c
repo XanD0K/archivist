@@ -2,21 +2,21 @@
 
 // Libraries
 #include <dirent.h>
-#include <stdbool.h>
-#include <sys/stat.h>
-
-// Headers
 #include <limits.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+
+// Header
 #include "utils.h"
 
 // Prototypes
 static void print_tree_help(void);
 static void print_tree(struct dirent **namelist, char *base_dir, int n);
 static void print_branch(struct dirent *namelist, char *current_path, const char *base_dir, char *prefix, bool is_last);
-static char *concatenates_prefix(char *prefix, bool is_last);
+static char *concatenates_prefix(char *prefix, char *sufix);
 
 // Displays directory's structure 
 int handle_tree(int argc, char **argv)
@@ -115,7 +115,8 @@ static void print_branch(struct dirent *namelist, char *current_path, const char
             bool child_is_last = (i == n - 1);
             if (strcmp(entry[i]->d_name, ".") != 0 && strcmp(entry[i]->d_name, "..") != 0)
             {
-                char *new_prefix = concatenates_prefix(prefix, child_is_last);
+                char *continuation = (is_last) ? "    " : "│   ";
+                char *new_prefix = concatenates_prefix(prefix, continuation);
                 if (!new_prefix)
                 {
                     // Fallbacks to previous prefix
@@ -136,13 +137,11 @@ static void print_branch(struct dirent *namelist, char *current_path, const char
 }
 
 // Concatenates prefix
-static char *concatenates_prefix(char *prefix, bool is_last)
+static char *concatenates_prefix(char *prefix, char *sufix)
 {
-    char *continuation = (is_last) ? "    " : "│   ";
-    
     size_t prefix_len = strlen(prefix);
-    size_t symbol_len = strlen(continuation);
-    size_t total_size = prefix_len + symbol_len;
+    size_t sufix_len = strlen(sufix);
+    size_t total_size = prefix_len + sufix_len;
 
     char *new_prefix = calloc(total_size + 1, sizeof(char));
     if (!new_prefix)
@@ -151,7 +150,7 @@ static char *concatenates_prefix(char *prefix, bool is_last)
     }
 
     strcpy(new_prefix, prefix);
-    strcat(new_prefix, continuation);
+    strcat(new_prefix, sufix);
 
     return new_prefix;
 }
