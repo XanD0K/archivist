@@ -24,11 +24,6 @@ bool match_type(const char *type, mode_t mode)
     return false;
 }
 
-bool match_extension(char *extensions, char *name)
-{
-    return;
-}
-
 // Checks if size is between min and max
 bool match_size(off_t max_size, off_t min_size, off_t size)
 {
