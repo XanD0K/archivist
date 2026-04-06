@@ -1,9 +1,11 @@
 #ifndef LIST_H
 #define LIST_H
 
+// Libraries
 #include <dirent.h>
 #include <stdbool.h>
 
+// Headers
 #include "cli_opts.h"
 
 // Alias of a pointer to a function

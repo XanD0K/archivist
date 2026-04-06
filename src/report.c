@@ -13,11 +13,11 @@
 #include <unistd.h>
 
 // Headers
+#include "help.h"
 #include "report.h"
 #include "utils.h"
 
 // Prototypes
-static void print_report_help(void);
 static ReportOptions parse_report_opts(int argc, char **argv, int opt_start);
 static SortReport get_sort_func(char *sort);
 static int cmp_name(const void *a, const void *b);
@@ -121,7 +121,6 @@ int handle_report(int argc, char **argv)
         {
             report_element(base_dir, namelist[i], opts, ext, &ext_counter,
                            &ext_capacity, &total_files, &total_size);
-            free(namelist[i]);
             if (ext == NULL)
             {
                 errno = ENOMEM;
@@ -131,6 +130,8 @@ int handle_report(int argc, char **argv)
                 return 10;
             }
         }
+
+        free(namelist[i]);
     }
 
     free(base_dir);
@@ -175,41 +176,6 @@ int handle_report(int argc, char **argv)
     }
     free(namelist);
     return 0;
-}
-
-// Prints explanation of 'report' functionality
-static void print_report_help(void)
-{
-    puts(
-        "Usage: ./archivist report [DIRECTORY] [FLAGS]\n"
-        "\n"
-        "DIRECTORY defaults to current directory (.)\n"
-        "\n"
-        "Flags:\n"
-        "   -e | --extension\n"
-        "       displays information only of specified extensions\n"
-        "       if more than 1 extension, separate them with a comma\n"
-        "   -h | --human-readable\n"
-        "       outputs size in a more readable format\n"
-        "       default: off\n"
-        "   -s | --sort <name | size | quantity>\n"
-        "       sorts output by:\n"
-        "           name → compares the ASCII value of each character\n"
-        "           size → total size\n"
-        "           quantity → number of files\n"
-        "       default: name"
-        "   -R | --recursive\n"
-        "       also lists subdirectories\n"
-        "       default: off\n"
-        "\n"
-        "Examples:\n"
-        "   ./archivist report\n"
-        "   ./archivist report /folder\n"
-        "   ./archivist report /folder -e txt,pdf,jpeg\n"
-        "   ./archivist report --human-readable -R\n"
-        "\n"
-        "All commands: ./archivist help"
-    );
 }
 
 // Parses through CLI arguments for 'report' functionality

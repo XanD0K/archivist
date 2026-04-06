@@ -13,12 +13,12 @@
 #include <unistd.h>
 
 // Headers
+#include "help.h"
 #include "search_cmd.h"
 #include "utils.h"
 #include "utils_filter.h"
 
 // Prototypes
-static void print_search_help(void);
 static SearchOptions parse_search_opts(int argc, char **argv, int opt_start, bool *size_err);
 static void search_element(char *current_path, const char *base_dir, SearchOptions opts, const struct dirent *namelist, const char *searched, size_t *counter, bool *printed);
 static bool match_name(const char *current_name, const char *searched, bool contains, bool ignore_case);
@@ -46,7 +46,7 @@ int handle_search(int argc, char **argv)
     const char *dir_path = NULL;
     int opt_start = 3;
     // Directory was provided
-    if (argc > 3 && argv[3][0] != '-')
+    if (argc >= 4 && argv[3][0] != '-')
     {
         dir_path = argv[3];
         opt_start = 4;
@@ -87,8 +87,9 @@ int handle_search(int argc, char **argv)
         if (strcmp(namelist[i]->d_name, ".") != 0 && strcmp(namelist[i]->d_name, "..") != 0)
         {
             search_element(base_dir, base_dir, opts, namelist[i], searched_name, &counter, &printed);
-            free(namelist[i]);
         }
+
+        free(namelist[i]);
     }
     if (!printed)
     {
@@ -106,49 +107,6 @@ int handle_search(int argc, char **argv)
     free(base_dir);
     free(searched_name);
     return 0;
-}
-
-// Prints explanation of 'search' functionality
-static void print_search_help(void)
-{
-    puts(
-        "Usage: ./archivist search NAME [DIRECTORY] [FLAGS]\n"
-        "\n"
-        "DIRECTORY defaults to current directory (.)\n"
-        "If NAME is not important, use * symbol"
-        "\n"
-        "Flags:\n"
-        "   -c | --contains\n"
-        "       includes all files/directories that look alike given name\n"
-        "       default: off\n"
-        "   -e | --extension\n"
-        "       search for specific extension\n"
-        "       e.g. txt | .txt"
-        "   -i | --ignore-case\n"
-        "       distinguish case\n"
-        "       default: on\n"
-        "   -t | --type\n"
-        "       includes only specific type (file | dir | slink)\n"
-        "   -R | --recursive\n"
-        "       also search in subdirectories\n"
-        "       default: off\n"
-        "   --min-size\n"
-        "   --max-size\n"
-        "       only consider files smaller/larger than specified value\n"
-        "       notation: B | K | KB | M | MB | G | GB | T | TB\n"
-        "       default: B (bytes)\n"
-        "       e.g. 20 | 50K | 30GB | 200T\n"
-        "\n"
-        "Examples:\n"        
-        "./archivist search filename.txt\n"
-        "./archivist search filename.txt /folder\n"
-        "./archivist search filename /folder -e .txt \n"
-        "./archivist search * /folder -e txt \n"
-        "./archivist search filen /folder -c --ignore-case -t file\n"
-        "./archivist search filen /folder -R --min-size 50K --max-size 50G\n"
-        "\n"
-        "All comands: ./archivist help"
-    );
 }
 
 // Parses through CLI arguments for 'search' functionality

@@ -13,7 +13,7 @@
 #include <unistd.h>
 
 // Headers
-#include "commands.h"
+#include "help.h"
 #include "list.h"
 #include "utils.h"
 
@@ -24,7 +24,6 @@ static bool dir_first;
 static bool ignore_case;
 
 // Prototypes
-static void print_list_help(void);
 static ListOptions parse_list_opts(int argc, char **argv, int opt_start);
 static SortList get_sort_func(char *sort);
 static int cmp_name(const struct dirent **a, const struct dirent **b);
@@ -32,7 +31,7 @@ static int cmp_date(const struct dirent **a, const struct dirent **b);
 static int cmp_size(const struct dirent **a, const struct dirent **b);
 static int cmp_ext(const struct dirent **a, const struct dirent **b);
 static int check_is_dir (const struct dirent *a, const struct dirent *b);
-static void check_element(struct dirent *namelist, const char *current_path, size_t *f_counter,
+static void list_element(struct dirent *namelist, const char *current_path, size_t *f_counter,
                           size_t *dir_counter, size_t *slink_counter, size_t *err_counter,
                           off_t *total_size, SortList sorter, ListOptions opts);
 
@@ -80,6 +79,7 @@ int handle_list(int argc, char **argv)
         // Checks for valid sort method
         if (!check_sort(opts.base.sort, sorts, len))
         {
+            free(base_dir);
             errno = EINVAL;
             fprintf(stderr, "Invalid sort argument: %s\n"
                             "Help for list command: ./archisvist list help\n"
@@ -116,10 +116,11 @@ int handle_list(int argc, char **argv)
                 printf("%s\n", namelist[i]->d_name);
             }            
             // Recursively checks directory elements and updates counters
-            check_element(namelist[i], base_dir, &f_counter, &dir_counter, &slink_counter,
+            list_element(namelist[i], base_dir, &f_counter, &dir_counter, &slink_counter,
                           &err_counter, &total_size, sorter, opts);
-            free(namelist[i]);
         }
+        
+        free(namelist[i]);
     }
 
     free(namelist);
@@ -146,50 +147,6 @@ int handle_list(int argc, char **argv)
     }
     
     return 0;
-}
-
-// Prints explanation of 'list' functionality
-static void print_list_help(void)
-{
-    puts(
-        "Usage: ./archivist list [DIRECTORY] [FLAGS]\n"
-        "\n"
-        "DIRECTORY defaults to current directory (.)\n"
-        "\n"
-        "Flags:\n"
-        "   -h | --human-readable\n"
-        "       outputs size of files/dir in a more readable format\n"
-        "       default: off\n"
-        "   -i | --ignore-case\n"
-        "       distinguish case\n"
-        "       default: on\n"
-        "   -r | --reverse\n"
-        "       changes order (ascending | descending)\n"
-        "       default: off (ascending)\n"
-        "   -s | --sort <date|name|size|extension|version>\n"
-        "       sorts output by:\n"
-        "           date → compares last modification date\n"
-        "           name → compares the ASCII value of each character\n"
-        "           size → compares the size\n"
-        "           extension → compares extension of each file\n"
-        "           version → compares letters and numbers separately\n"
-        "       default: name\n"
-        "   -R | --recursive\n"
-        "       also lists subdirectories\n"
-        "       default: off\n"
-        "   --dir-first\n"
-        "       directories before files\n"
-        "       default: off\n"
-        "\n"
-        "Examples:\n"
-        "./archivist list\n"
-        "./archivist list /folder\n"
-        "./archivist list /folder -o size -R\n"
-        "./archivist list /folder --dir-first --recursive --reverse\n"
-        "./archivist list /folder -i --sort version\n"
-        "\n"
-        "All commands: ./archivist help"
-    );
 }
 
 // Parses through CLI arguments for 'list' functionality
@@ -229,14 +186,16 @@ static ListOptions parse_list_opts(int argc, char **argv, int opt_start)
             case 'h':
             {
                 opts.base.human_readable = true;
+                break;
             }
             // Ignore case
             case 'i':
             {
                 opts.base.ignore_case = false;
+                break;
             }
             // Oder
-            case 'o':
+            case 's':
             {
                 opts.base.sort = optarg;
                 break;
@@ -417,7 +376,7 @@ static int check_is_dir (const struct dirent *a, const struct dirent *b)
 }
 
 // Traverses through every element and updates counters
-static void check_element(struct dirent *namelist, const char *current_path, size_t *f_counter,
+static void list_element(struct dirent *namelist, const char *current_path, size_t *f_counter,
                           size_t *dir_counter, size_t *slink_counter, size_t *err_counter,
                           off_t *total_size, SortList sorter, ListOptions opts)
 {
@@ -464,7 +423,7 @@ static void check_element(struct dirent *namelist, const char *current_path, siz
         for (int i = 0; i < n; i++)
         {
             // Recursively checks directory elements and updates counters
-            check_element(entry[i], new_path, f_counter, dir_counter, slink_counter,
+            list_element(entry[i], new_path, f_counter, dir_counter, slink_counter,
                           err_counter, total_size, sorter, opts);
             free(entry[i]);
         }
