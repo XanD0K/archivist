@@ -103,6 +103,7 @@ Extension *get_all_extensions(char *exts, size_t *ext_count)
             {
                 free(output_ext->extension);
             }
+            free(exts_cpy);
             free(output_ext);
             return NULL;
         }
@@ -114,6 +115,7 @@ Extension *get_all_extensions(char *exts, size_t *ext_count)
         token = strtok(NULL, ",");
     }
 
+    free(exts_cpy);
     return output_ext;
 }
 
@@ -210,33 +212,50 @@ bool get_answer(const char *prompt)
 {
     while (1)
     {
-        printf("%s [y/n]\n", prompt);
+        printf("%s [y/n]: ", prompt);
         fflush(stdout);
 
-        char input[4];
-        if (fgets(input, sizeof(input), stdin) == NULL)
+        char *input = NULL;
+        size_t len = 0;
+
+        ssize_t nread = getline(&input, &len, stdin);
+        if (nread == -1)
         {
+            free(input);
             return false;
         }
-        
-        // Cleans input (removes \n)
-        input[strcspn(input, "\n")] = '\0';
 
-        // Cleans buffer
-        int c;
-        while ((c = getchar()) != '\n' && c != EOF)
-            ;
+        input[strcspn(input, "\n")] = '\0';
 
         if (strcasecmp(input, "YES") == 0 || strcasecmp(input, "Y") == 0)
         {
+            free(input);
             return true;
         }
         
         if (strcasecmp(input, "NO") == 0 || strcasecmp(input, "N") == 0)
         {
+            free(input);
             return false;
         }
 
+        free(input);
         printf("Invalid answer! Say YES (Y) or NO (N)\n");
     }
+}
+
+// Checks if directory will overflow maximum size
+int check_path_name_size(char *dst, size_t len, const char *prefix, const char *suffix)
+{
+    int ret = (suffix && suffix[0])
+        ? snprintf(dst, len, "%s/%s", prefix, suffix)
+        : snprintf(dst, len, "%s", prefix);
+
+    if (ret < 0 || (size_t)ret >= len)
+    {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+
+    return 0;
 }

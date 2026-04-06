@@ -24,5 +24,6 @@ bool check_sort(char *sort, const char **sorts, size_t len);
 off_t get_size(char *size);
 const char *get_suffix(char newpath[], const char *base_dir);
 bool get_answer(const char *prompt);
+int check_path_name_size(char *dst, size_t len, const char *prefix, const char *suffix);
 
 #endif
