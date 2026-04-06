@@ -1,6 +1,10 @@
 #ifndef COMMANDS_H
 #define COMMANDS_H
 
+// Libraries
+#include <stdbool.h>
+#include <stddef.h>  // size_t
+
 // Type/Alias
 typedef int (*CommandHandler)(int argc, char **argv);
 
@@ -15,7 +19,6 @@ typedef struct
 
 // Prototypes
 int execute_command(int argc, char **argv);
-void handle_help(void);  // help.c
 int handle_tree(int argc, char **argv);  // tree.c
 
 #endif
