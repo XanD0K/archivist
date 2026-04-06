@@ -1,5 +1,10 @@
+// Libraries
 #include <stdio.h>
 
+// Headers
+#include "help.h"
+
+// Prints 'help' command
 void handle_help(void)
 {
     puts(
@@ -31,5 +36,254 @@ void handle_help(void)
         "   ./archivist search help\n"
         "   ./archivist report help\n"
         "   ./archivist move help"
+    );
+}
+
+// Prints explanation of 'list' functionality
+void print_list_help(void)
+{
+    puts(
+        "Usage: ./archivist list [DIRECTORY] [FLAGS]\n"
+        "\n"
+        "DIRECTORY defaults to current directory (.)\n"
+        "\n"
+        "Flags:\n"
+        "   -h | --human-readable\n"
+        "       outputs size of files/dir in a more readable format\n"
+        "       default: off\n"
+        "   -i | --ignore-case\n"
+        "       distinguish case\n"
+        "       default: on\n"
+        "   -r | --reverse\n"
+        "       changes order (ascending | descending)\n"
+        "       default: off (ascending)\n"
+        "   -s | --sort <date|name|size|extension|version>\n"
+        "       sorts output by:\n"
+        "           date → compares last modification date\n"
+        "           name → compares the ASCII value of each character\n"
+        "           size → compares the size\n"
+        "           extension → compares extension of each file\n"
+        "           version → compares letters and numbers separately\n"
+        "       default: name\n"
+        "   -R | --recursive\n"
+        "       also lists subdirectories\n"
+        "       default: off\n"
+        "   --dir-first\n"
+        "       directories before files\n"
+        "       default: off\n"
+        "\n"
+        "Examples:\n"
+        "./archivist list\n"
+        "./archivist list /folder\n"
+        "./archivist list /folder -o size -R\n"
+        "./archivist list /folder --dir-first --recursive --reverse\n"
+        "./archivist list /folder -i --sort version\n"
+        "\n"
+        "All commands: ./archivist help"
+    );
+}
+
+// Prints explanation of 'search' functionality
+void print_search_help(void)
+{
+    puts(
+        "Usage: ./archivist search NAME [DIRECTORY] [FLAGS]\n"
+        "\n"
+        "DIRECTORY defaults to current directory (.)\n"
+        "If NAME is not important, use * symbol"
+        "\n"
+        "Flags:\n"
+        "   -c | --contains\n"
+        "       includes all files/directories that look alike given name\n"
+        "       default: off\n"
+        "   -e | --extension\n"
+        "       search for specific extension\n"
+        "       e.g. txt | .txt"
+        "   -i | --ignore-case\n"
+        "       distinguish case\n"
+        "       default: on\n"
+        "   -t | --type\n"
+        "       includes only specific type (file | dir | slink)\n"
+        "   -R | --recursive\n"
+        "       also search in subdirectories\n"
+        "       default: off\n"
+        "   --min-size\n"
+        "   --max-size\n"
+        "       only consider files smaller/larger than specified value\n"
+        "       notation: B | K | KB | M | MB | G | GB | T | TB\n"
+        "       default: B (bytes)\n"
+        "       e.g. 20 | 50K | 30GB | 200T\n"
+        "\n"
+        "Examples:\n"        
+        "./archivist search filename.txt\n"
+        "./archivist search filename.txt /folder\n"
+        "./archivist search filename /folder -e .txt \n"
+        "./archivist search * /folder -e txt \n"
+        "./archivist search filen /folder -c --ignore-case -t file\n"
+        "./archivist search filen /folder -R --min-size 50K --max-size 50G\n"
+        "\n"
+        "All comands: ./archivist help"
+    );
+}
+
+// Prints explanation of 'report' functionality
+void print_report_help(void)
+{
+    puts(
+        "Usage: ./archivist report [DIRECTORY] [FLAGS]\n"
+        "\n"
+        "DIRECTORY defaults to current directory (.)\n"
+        "\n"
+        "Flags:\n"
+        "   -e | --extension\n"
+        "       displays information only of specified extensions\n"
+        "       if more than 1 extension, separate them with a comma\n"
+        "   -h | --human-readable\n"
+        "       outputs size in a more readable format\n"
+        "       default: off\n"
+        "   -s | --sort <name | size | quantity>\n"
+        "       sorts output by:\n"
+        "           name → compares the ASCII value of each character\n"
+        "           size → total size\n"
+        "           quantity → number of files\n"
+        "       default: name"
+        "   -R | --recursive\n"
+        "       also lists subdirectories\n"
+        "       default: off\n"
+        "\n"
+        "Examples:\n"
+        "   ./archivist report\n"
+        "   ./archivist report /folder\n"
+        "   ./archivist report /folder -e txt,pdf,jpeg\n"
+        "   ./archivist report --human-readable -R\n"
+        "\n"
+        "All commands: ./archivist help"
+    );
+}
+
+// Prints explanation of 'tree' functionality
+void print_tree_help(void)
+{
+    puts(
+        "Usage: ./archivist tree [DIRECTORY]\n"
+        "\n"
+        "DIRECTORY defaults to current directory (.)\n"
+        "\n"
+        "Examples:zn"
+        "   ./archivist tree\n"
+        "   ./archivist tree /folder\n"
+        "\n"
+        "All commands: ./archivist help"
+    );
+}
+
+// Prints explanation of 'move' functionality
+void print_move_help(void)
+{
+    puts(
+        "Usage: ./archivist move [DIRECTORY] DIRECTORY [FLAGS]\n"
+        "\n"
+        "First DIRECTORY is the ORIGIN. It defaults to current directory (.)\n"
+        "Second DIRECTORY is the DESTINATION. It is a required argument\n"
+        "If destination directory doesn't exist, it will be created\n"
+        "If file already exists on destination, moved file will be renamed (e.g. file.txt → file_2.txt)\n"
+        "\n"
+        "Flags:\n"
+        "   -c | --contains\n"
+        "       moves only files/subdirectories that contain a word/pattern\n"
+        "   -d | --dry-run\n"
+        "       simulates changes, showing the result\n"
+        "       default: off\n"
+        "   -e | --extension\n"
+        "       move files of given extension\n"
+        "       if more than 1 extension, separate them with a comma\n"
+        "       e.g. txt | .txt\n"
+        "   -f | --force\n"
+        "       if file/subdirectory already exists, it will be overwritten\n"
+        "       default: off\n"
+        "   -i | --interactive\n"
+        "       Asks for confirmation before moving file or creating directory\n"
+        "   -s | --skip\n"
+        "       if file/subdirectory alredy exists, it won't be moved\n"
+        "       default: off\n"
+        "   -t | --type\n"
+        "       moves only specific type (file | dir | slink)\n"
+        "   -v | --verbose\n"
+        "       states every moved file/subdirectory\n"
+        "       default: off\n"
+        "   -R | --recursive\n"
+        "       also moves all files from subdirectories\n"
+        "       default: on\n"
+        "   --min-size\n"
+        "   --max-size\n"
+        "       only consider files smaller/larger than specified value\n"
+        "       notation: B | K | KB | M | MB | G | GB | T | TB\n"
+        "       default: B (bytes)\n"
+        "       e.g. 20 | 50K | 30GB | 200T\n"
+        "\n"
+        "Attention:\n"
+        "'force' and 'skip' flags are excludent. If both are provided, the last one will prevail\n"
+        "\n"
+        "Examples:\n"
+        "   ./archivist move folder2/\n"
+        "   ./archivist move folder1/ folder2/\n"
+        "   ./archivist move folder1/ folder2/ -c word\n"
+        "   ./archivist move folder1/ folder2/ -d -e txt,pdf\n"
+        "   ./archivist move folder1/ folder2/ --force -i --type file\n"
+        "   ./archivist move folder1/ folder2/ -s -v -R\n"
+        "   ./archivist move folder1/ folder2/ --min-size 50K --max-size 50G\n"        
+        "\n"
+        "All commands: ./archivist help"
+    );
+}
+
+// Prints explanation of 'delete' functionality
+void print_delete_help(void)
+{
+    puts(
+        "Usage: ./archivist delete [DIRECTORY] [FLAGS]\n"
+        "\n"
+        "Directory defaults to current directory (.)\n"
+        "\n"
+        "Flags:\n"
+        "   -c | --contains\n"
+        "       deletes only files/subdirectories that contain a word/pattern\n"
+        "   -d | --dry-run\n"
+        "       simulates changes, showing the result\n"
+        "       default: off\n"
+        "   -e | --extension\n"
+        "       deletes files of given extension\n"
+        "       if more than 1 extension, separate them with a comma\n"
+        "       e.g. txt | .txt\n"
+        "   -h | --human-readable\n"
+        "       outputs size of files/dir in a more readable format\n"
+        "       default: off\n"
+        "   -i | --interactive\n"
+        "       Asks for confirmation before deleting file/directory\n"
+        "   -t | --type\n"
+        "       deletes only specific type (file | dir | slink)\n"
+        "   -v | --verbose\n"
+        "       states every deleted file/subdirectory\n"
+        "       default: off\n"
+        "   -R | --recursive\n"
+        "       also deletes all files from subdirectories\n"
+        "       default: on\n"
+        "   --min-size\n"
+        "   --max-size\n"
+        "       only consider files smaller/larger than specified value\n"
+        "       notation: B | K | KB | M | MB | G | GB | T | TB\n"
+        "       default: B (bytes)\n"
+        "       e.g. 20 | 50K | 30GB | 200T\n"
+        "\n"
+        "Examples:\n"
+        "   ./archivist delete\n"
+        "   ./archivist delete folder1/\n"
+        "   ./archivist delete folder1/ -c word\n"
+        "   ./archivist delete folder1/ -d -e txt,pdf\n"
+        "   ./archivist delete folder1/ -i --type file\n"
+        "   ./archivist delete folder1/ -v -R\n"
+        "   ./archivist delete folder1/ --min-size 50K --max-size 50G\n"        
+        "\n"
+        "All commands: ./archivist help"
     );
 }
