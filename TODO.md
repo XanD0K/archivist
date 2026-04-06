@@ -9,7 +9,6 @@
 - [ ] Implement `backup` feature
 - [-] Implement `help` feature
 - [ ] Implement `log` feature
-- [ ] Implement `delete` feature
 - [ ] Implement `duplicate` feature
 - [ ] `move` feature → creates destination directory when validation fails
 - [ ] Implement `restore` feature
@@ -21,6 +20,13 @@
 - [ ] Change `validade_command` to use `for` loop instead of `bsearch()`
 - [ ] Change `bsearch()` to my own implementation of a Binary Search
 - [ ] Modular function to create and validate path
+- [ ] Fix `validate_args()` with new max/min commands allowed
+- [ ] Change all commands logic validation/parse to remove repetitive code (boilerplate)
+- [ ] Change content retriever (`struct dirent`) to remove boilerplate
+- [ ] Change element validation to remove boilerplate
+- [ ] Refactor flags checker
+- [ ] Move `extension` flag from `GeneralOptions` to `FilterOptions` structure
+- [ ] Change `snprintf()` to `check_path_name_size()` on all files
 
 ## Testing
 
@@ -47,3 +53,5 @@
 - [x] Implement `tree` feature
 - [x] Modular function to retrieve extensions
 - [x] Implement `move` feature
+- [x] Fix `type` flag to better interact with other flags
+- [x] Implement `delete` feature

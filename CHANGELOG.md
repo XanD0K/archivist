@@ -1,6 +1,32 @@
 # Changelog
 
 
+## [0.5.1] - DATE
+### Added
+
+### Changed
+
+### Fixed
+
+### Removed
+
+
+## [0.5.0] - 2026-04-05
+### Added
+- Implemented `delete` feature
+- Created helper functions `delete_directory()`, `match_directory_size()` and `match_extension()`
+
+### Changed
+- Moved all commands' help flags to `help.c`
+- Created `ActionOptions` structure for new reused flags
+- Moved `check_directory_size()` to `utils.c`
+
+### Fixed
+- Fixed bug on `get_answer()`
+- Fixed `free(namelist[i])` throughout all files, putting them in the right place
+- Fixed CLI arguments parser in `list.c`
+
+
 ## [0.4.0] - 2026-04-01
 ### Added
 - Fully implemented `move` feature
@@ -11,10 +37,6 @@
 - Created `utils_filter.c` to hold all helper functions related to filters and flags
 - Moved the logic to retrieve user's extension into `get_all_extensions()` helper function in `utils.c`
 - Moved the logic to get suffix from paths into `get_suffix()` helper function `utils.c`
-
-### Fixed
-
-### Removed
 
 
 ## [0.3.3] - 2026-03-29

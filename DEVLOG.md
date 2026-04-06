@@ -8,12 +8,24 @@
 **Progress**
 
 
-## [DATE]
+## [2026-04-05]
 **Plans**
 - Implement `delete` feature
+
 **Challenges**
+- Better way to improve relationship across all flags
+- Refactor `type` flag logic for directories so it can interact better with all other flags
 
 **Progress**
+- While implementing basic function to validate the `delete` feature, I thought I could remove some repetition (boilerplate) from all files. All coomand's files follow the same logic:
+    - Check for `help` flag
+    - Defines starting values
+    - Validates base directory
+    - Parses CLI arguments
+- Implemented a helper function and a structure to remove the boilerplate, but in the end it ended up by removing just 5-8 lines from each file. In other words, I gave the code more complexity for no substantial gain. Undid all changes, keeping the code simpler but easier to maintain
+- After finishing the program, I'll go back and refator everything, removing this boilerplate, the one at the end of each handler function (`struc dirent`, recursiveness and `free()` memory) and the one at beggining of each action functions (removes `.` and `..`, creates new path, calls `snprintf()`, recursiveness, `free()`)
+- Noticed a bug on the way `type` flag interacted with other flags, specially `contains`, `max-size` and `min-size`. Created `match_directory_size()` to recursivelly calculates the size of a directory, and `delete_directory()` to recursivelly deletes a directory
+- Rest of `delete` feature was implemented just like all other features
 
 
 ## [2026-04-01]
