@@ -17,9 +17,18 @@ typedef struct
 // Filter flags shared across files
 typedef struct
 {
+    char *contains;
     off_t min_size;
     off_t max_size;
     char *type;
 } FilterOptions;
+
+// Action flags shared across files
+typedef struct
+{
+    bool dry_run;
+    bool interactive;
+    bool verbose;
+} ActionOptions;
 
 #endif

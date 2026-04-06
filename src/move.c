@@ -13,20 +13,17 @@
 #include <unistd.h>
 
 // Hedaers
+#include "help.h"
 #include "move.h"
 #include "utils.h"
 #include "utils_filter.h"
 
 // Prototypes
-static void print_move_help(void);
 static char *get_valid_destination(const char *path);
-static int check_directory_size(char *dst, size_t len, const char *prefix, const char *suffix);
 static MoveOptions parse_move_opts(int argc, char **argv, int opt_start, bool *size_err);
-static void move_element(char *current_path, char *base_dir, char *dst_dir, MoveOptions opts,
+static void move_element(char *current_path, char *dst_dir, MoveOptions opts,
                          struct dirent *namelist, Extension *ext, size_t ext_counter,
                          size_t *moved_files, size_t *created_directories);
-static bool match_name(char *contains, const char *name);
-static bool match_extension(Extension *exts, size_t ext_counter, char *name);
 static char *match_existed_file(char *dst_dir, char *new_dst_dir, char *name, bool skip, bool force);
 
 // Moves files and subdirectories
@@ -43,11 +40,11 @@ int handle_move(int argc, char **argv)
     const char *dir_path_src = NULL;
     const char *dir_path_dst = argv[2];
     int opt_start = 3;
-    if (argc > 3 && argv[3][0] != '-')
+    if (argc >= 4 && argv[3][0] != '-')
     {
-        opt_start = 4;
         dir_path_src = argv[2];
         dir_path_dst = argv[3];
+        opt_start = 4;
     }
 
     // Validates base directory
@@ -56,6 +53,7 @@ int handle_move(int argc, char **argv)
     {
         return 4;
     }
+
     // Checks/Creates destination directory
     char *dst_dir = get_valid_destination(dir_path_dst);
     if (!dst_dir)
@@ -84,7 +82,7 @@ int handle_move(int argc, char **argv)
         free(base_dir);
         free(dst_dir);
         perror("scandir");
-        return 9;
+        return 6;
     }
 
     // Retrieves user's selected extensions (-e|--extension flag)
@@ -109,17 +107,18 @@ int handle_move(int argc, char **argv)
     {
         if (strcmp(namelist[i]->d_name, ".") != 0 && strcmp(namelist[i]->d_name, "..") !=0)
         {
-            move_element(base_dir, base_dir, dst_dir, opts, namelist[i], ext,
+            move_element(base_dir, dst_dir, opts, namelist[i], ext,
                          ext_counter, &moved_files, &created_directories);
-            free(namelist[i]);
         }
+
+        free(namelist[i]);
     }
 
     free(base_dir);
     free(dst_dir);
     free(namelist);
 
-    if (opts.dry_run)
+    if (opts.action.dry_run)
     {
         printf("[DRY-RUN] Files that would be moved: %zu\n"
                "[DRY-RUN] Directories that would be created: %zu\n",
@@ -132,67 +131,6 @@ int handle_move(int argc, char **argv)
     }
 
     return 0;
-}
-
-
-// Prints explanation of 'move' functionality
-static void print_move_help(void)
-{
-    puts(
-        "Usage: ./archivist move [DIRECTORY] DIRECTORY [FLAGS]\n"
-        "\n"
-        "First DIRECTORY is the ORIGIN. It defaults to current directory (.)\n"
-        "Second DIRECTORY is the DESTINATION. It is a required argument\n"
-        "If destination directory doesn't exist, it will be created\n"
-        "If file already exists on destination, new file will be renamed (e.g. file.txt → file_2.txt)\n"
-        "\n"
-        "Flags:\n"
-        "   -c | --contains\n"
-        "       moves only files/subdirectories that contain a word/pattern\n"
-        "   -d | --dry-run\n"
-        "       simulates changes, showing the result\n"
-        "       default: off\n"
-        "   -e | --extension\n"
-        "       move files of given extension\n"
-        "       if more than 1 extension, separate them with a comma\n"
-        "       e.g. txt | .txt\n"
-        "   -f | --force\n"
-        "       if file/subdirectory already exists, it will be overwritten\n"
-        "       default: off\n"
-        "   -i | --interactive\n"
-        "       Asks for confirmation before moving file or creating directory\n"
-        "   -s | --skip\n"
-        "       if file/subdirectory alredy exists, it won't be moved\n"
-        "       default: off\n"
-        "   -t | --type\n"
-        "       moves only specific type (file | dir | slink)\n"
-        "   -v | --verbose\n"
-        "       states every moved file/subdirectory\n"
-        "       default: off\n"
-        "   -R | --recursive\n"
-        "       also moves all files from subdirectories\n"
-        "       default: on\n"
-        "   --min-size\n"
-        "   --max-size\n"
-        "       only consider files smaller/larger than specified value\n"
-        "       notation: B | K | KB | M | MB | G | GB | T | TB\n"
-        "       default: B (bytes)\n"
-        "       e.g. 20 | 50K | 30GB | 200T\n"
-        "\n"
-        "Attention:\n"
-        "'force' and 'skip' flags are excludent. If both are provided, the last one will prevail\n"
-        "\n"
-        "Examples:\n"
-        "   ./archivist move folder2/\n"
-        "   ./archivist move folder1/ folder2/\n"
-        "   ./archivist move folder1/ folder2/ -c word\n"
-        "   ./archivist move folder1/ folder2/ -d -e txt,pdf\n"
-        "   ./archivist move folder1/ folder2/ --force -i --type file\n"
-        "   ./archivist move folder1/ folder2/ -s -v -R\n"
-        "   ./archivist move folder1/ folder2/ --min-size 50K --max-size 50G\n"        
-        "\n"
-        "All commands: ./archivist help"
-    );
 }
 
 // Creates destination directory
@@ -229,7 +167,7 @@ static char *get_valid_destination(const char *path)
     {
         // Creates new path
         char new_path[PATH_MAX];
-        if (check_directory_size(new_path, sizeof(new_path), current_path, token) == -1)
+        if (check_path_name_size(new_path, sizeof(new_path), current_path, token) == -1)
         {
             free(cpy_path);
             fprintf(stderr, "Path too long: %s\n", strerror(errno));
@@ -248,7 +186,7 @@ static char *get_valid_destination(const char *path)
         }
 
         // Updates current path for recursiveness
-        if (check_directory_size(current_path, sizeof(current_path), new_path, NULL) == -1)
+        if (check_path_name_size(current_path, sizeof(current_path), new_path, NULL) == -1)
         {
             free(cpy_path);
             fprintf(stderr, "Path too long: %s\n", strerror(errno));
@@ -261,29 +199,13 @@ static char *get_valid_destination(const char *path)
     return strdup(current_path);
 }
 
-// Checks if directory will overflow maximum size
-static int check_directory_size(char *dst, size_t len, const char *prefix, const char *suffix)
-{
-    int ret = (suffix && suffix[0])
-        ? snprintf(dst, len, "%s/%s", prefix, suffix)
-        : snprintf(dst, len, "%s", prefix);
-
-    if (ret < 0 || (size_t)ret >= len)
-    {
-        errno = ENAMETOOLONG;
-        return -1;
-    }
-
-    return 0;
-}
-
 // Parses through CLI arguments for 'move' functionality
 static MoveOptions parse_move_opts(int argc, char **argv, int opt_start, bool *size_err)
 {
     MoveOptions opts = {0};
     opts.base.recursive = true;
 
-    static struct  option long_opts[] =
+    static struct option long_opts[] =
     {
         {"contains", no_argument, 0, 'c'},
         {"dry-run", no_argument, 0, 'd'},
@@ -293,7 +215,7 @@ static MoveOptions parse_move_opts(int argc, char **argv, int opt_start, bool *s
         {"skip", no_argument, 0, 's'},
         {"type", required_argument, 0, 't'},
         {"verbose", no_argument, 0, 'v'},
-        {"recursive", no_argument, 0, 'R'},        
+        {"recursive", no_argument, 0, 'R'},
         {"max-size", required_argument, 0, 0},
         {"min-size", required_argument, 0, 0},
         {NULL, 0, NULL, 0}
@@ -312,12 +234,12 @@ static MoveOptions parse_move_opts(int argc, char **argv, int opt_start, bool *s
         {
             case 'c':
             {
-                opts.contains = optarg;
+                opts.filter.contains = optarg;
                 break;
             }
             case 'd':
             {
-                opts.dry_run = true;
+                opts.action.dry_run = true;
                 break;
             }
             case 'e':
@@ -333,7 +255,7 @@ static MoveOptions parse_move_opts(int argc, char **argv, int opt_start, bool *s
             }
             case 'i':
             {
-                opts.interactive = true;
+                opts.action.interactive = true;
                 break;
             }
             case 's':
@@ -349,7 +271,7 @@ static MoveOptions parse_move_opts(int argc, char **argv, int opt_start, bool *s
             }
             case 'v':
             {
-                opts.verbose = true;
+                opts.action.verbose = true;
                 break;
             }
             case 'R':
@@ -383,7 +305,7 @@ static MoveOptions parse_move_opts(int argc, char **argv, int opt_start, bool *s
     return opts;
 }
 
-static void move_element(char *current_path, char *base_dir, char *dst_dir, MoveOptions opts,
+static void move_element(char *current_path, char *dst_dir, MoveOptions opts,
                          struct dirent *namelist, Extension *ext, size_t ext_counter,
                          size_t *moved_files, size_t *created_directories)
 {
@@ -393,8 +315,8 @@ static void move_element(char *current_path, char *base_dir, char *dst_dir, Move
     }
 
     // Checks for name equality (contains)
-    if ((opts.contains != NULL && opts.contains[0] != '\0') &&
-        !match_name(opts.contains, namelist->d_name))
+    if ((opts.filter.contains != NULL && opts.filter.contains[0] != '\0') &&
+        !match_name(opts.filter.contains, namelist->d_name))
     {
         return;
     }
@@ -402,7 +324,7 @@ static void move_element(char *current_path, char *base_dir, char *dst_dir, Move
     struct stat st;
     // Creates path to origin
     char new_path[PATH_MAX];
-    if (check_directory_size(new_path, sizeof(new_path), current_path, namelist->d_name) == -1)
+    if (check_path_name_size(new_path, sizeof(new_path), current_path, namelist->d_name) == -1)
     {
         return;
     }
@@ -413,7 +335,7 @@ static void move_element(char *current_path, char *base_dir, char *dst_dir, Move
 
     // Creates path to new directory (destination)
     char new_dst_dir[PATH_MAX];
-    if (check_directory_size(new_dst_dir, sizeof(new_dst_dir), dst_dir, namelist->d_name) == -1)
+    if (check_path_name_size(new_dst_dir, sizeof(new_dst_dir), dst_dir, namelist->d_name) == -1)
     {
         return;
     }
@@ -422,7 +344,7 @@ static void move_element(char *current_path, char *base_dir, char *dst_dir, Move
     if (opts.base.recursive && S_ISDIR(st.st_mode))
     {
         // Gets user's confirmation before creating new directory
-        if (opts.interactive)
+        if (opts.action.interactive)
         {
             char prompt[PATH_MAX];
             snprintf(prompt, sizeof(prompt), "Creates directory %s", new_dst_dir);
@@ -432,7 +354,7 @@ static void move_element(char *current_path, char *base_dir, char *dst_dir, Move
             }
         }
 
-        if (opts.dry_run)
+        if (opts.action.dry_run)
         {
             printf("[DRY-RUN] would create directory %s\n", new_dst_dir);
         }
@@ -447,7 +369,7 @@ static void move_element(char *current_path, char *base_dir, char *dst_dir, Move
 
         (*created_directories)++;
 
-        if (opts.verbose)
+        if (opts.action.verbose)
         {
             printf("Directory %s created at %s\n", namelist->d_name, dst_dir);
         }
@@ -462,7 +384,7 @@ static void move_element(char *current_path, char *base_dir, char *dst_dir, Move
 
         for (int i = 0; i < n; i++)
         {
-            move_element(new_path, base_dir, new_dst_dir, opts, entry[i], ext,
+            move_element(new_path, new_dst_dir, opts, entry[i], ext,
                          ext_counter, moved_files, created_directories);
             free(entry[i]);
         }
@@ -515,7 +437,7 @@ static void move_element(char *current_path, char *base_dir, char *dst_dir, Move
     }
 
     // Gets user's confirmation before moving file
-    if (opts.interactive)
+    if (opts.action.interactive)
     {
         char prompt[PATH_MAX];
         snprintf(prompt, sizeof(prompt), "Move file '%s' from %s to %s?", namelist->d_name, current_path, final_dst);
@@ -525,7 +447,7 @@ static void move_element(char *current_path, char *base_dir, char *dst_dir, Move
         }
     }
 
-    if (opts.dry_run)
+    if (opts.action.dry_run)
     {
         printf("[DRY-RUN] would move file '%s' from '%s' to '%s'\n", namelist->d_name, current_path, dst_dir);
     }
@@ -538,44 +460,12 @@ static void move_element(char *current_path, char *base_dir, char *dst_dir, Move
     (*moved_files)++;
 
     // Prints action in terminal
-    if (opts.verbose)
+    if (opts.action.verbose)
     {
         printf("File '%s' moved from '%s' to '%s'\n", namelist->d_name, current_path, dst_dir);
     }
 
     free(final_dst);
-}
-
-// Checks if name matches
-static bool match_name(char *contains, const char *name)
-{
-    return (strcasestr(name, contains) != NULL);
-}
-
-// Checks if extension matches
-static bool match_extension(Extension *exts, size_t ext_counter, char *name)
-{
-    const char *ext_name = get_clean_extension(name);
-    if (!ext_name || ext_name[0] == '\0')
-    {
-        return false;
-    }
-
-    for (size_t i = 0; i < ext_counter; i++)
-    {
-        const char *clean_ext = exts[i].extension;
-        
-        if (clean_ext[0] == '.')
-        {
-            clean_ext++;
-        }
-        if (strcasecmp(ext_name, clean_ext) == 0)
-        {
-            return true;
-        }
-    }
-
-    return false;
 }
 
 static char *match_existed_file(char *dst_dir, char *new_dst_dir, char *name, bool skip, bool force)
@@ -592,8 +482,8 @@ static char *match_existed_file(char *dst_dir, char *new_dst_dir, char *name, bo
     }
 
     // Default behavior: incremental rename
-    char *dot = strrchr(name, '.');
-    char *valid_dot = (dot != NULL) ? dot : "";
+    const char *dot = strrchr(name, '.');
+    const char *valid_dot = (dot != NULL) ? dot : "";
 
     char base[PATH_MAX];
     if (dot)
@@ -615,7 +505,7 @@ static char *match_existed_file(char *dst_dir, char *new_dst_dir, char *name, bo
         snprintf(new_name, sizeof(new_name), "%s_%zu%s", base, counter, valid_dot);
 
         char final_path[PATH_MAX];
-        if (check_directory_size(final_path, sizeof(final_path), dst_dir, new_name) == -1)
+        if (check_path_name_size(final_path, sizeof(final_path), dst_dir, new_name) == -1)
         {
             return NULL;
         }

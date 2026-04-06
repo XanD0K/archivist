@@ -7,16 +7,14 @@
 // Headers
 #include "cli_opts.h"
 
+// Structure to all CLI flags of 'move' functionality
 typedef struct
 {
     GeneralOptions base;  // extension | recursive
-    FilterOptions filter;  // min_size | max_size | type
-    char *contains;
-    bool dry_run;
+    FilterOptions filter;  // contains | min_size | max_size | type
+    ActionOptions action;  // dry-run | interactive | verbose
     bool force;
-    bool interactive;
     bool skip;
-    bool verbose;
 } MoveOptions;
 
 // Prototype
