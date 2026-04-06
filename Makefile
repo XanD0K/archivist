@@ -55,22 +55,22 @@ archivist: all
 
 # Cleans .o files, executable, and respective directories
 clean:
-	rm -rf $(ODIR) $(BINDIR)
+	@rm -rf $(ODIR) $(BINDIR)
 
 # Cleans and rebuilds
 rebuild: clean all
 
 # Builds and Runs executable
 run: $(EXE)
-	./$(EXE)
+	@./$(EXE)
 
 # Creates executable for debug
 debug:
-	$(MAKE) CFLAGS="$(CFLAGS) -g -O0 -fsanitize=address,leak" all
+	@$(MAKE) CFLAGS="$(CFLAGS) -g -O0 -fsanitize=address,leak" all
 
 # Creates optimized version of executable
 release:
-	$(MAKE) CFLAGS="-std=c11 -O3 -DNDEBUG" all
+	@$(MAKE) CFLAGS="-std=c11 -O3 -DNDEBUG" all
 
 # Shows available commands
 help:
