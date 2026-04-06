@@ -10,10 +10,10 @@
 #include <sys/stat.h>
 
 // Header
+#include "help.h"
 #include "utils.h"
 
 // Prototypes
-static void print_tree_help(void);
 static void print_tree(struct dirent **namelist, char *base_dir, int n);
 static void print_branch(struct dirent *namelist, char *current_path, const char *base_dir, char *prefix, bool is_last);
 static char *concatenates_prefix(char *prefix, char *sufix);
@@ -47,22 +47,6 @@ int handle_tree(int argc, char **argv)
     return 0;
 }
 
-// Prints explanation of 'tree' functionality
-static void print_tree_help(void)
-{
-    puts(
-        "Usage: ./archivist tree [DIRECTORY]\n"
-        "\n"
-        "DIRECTORY defaults to current directory (.)\n"
-        "\n"
-        "Examples:zn"
-        "   ./archivist tree\n"
-        "   ./archivist tree /folder\n"
-        "\n"
-        "All commands: ./archivist help"
-    );
-}
-
 // Prints root and defines starting point for printing branches
 static void print_tree(struct dirent **namelist, char *base_dir, int n)
 {
@@ -78,8 +62,9 @@ static void print_tree(struct dirent **namelist, char *base_dir, int n)
             bool is_last = (i == (n - 1));
             
             print_branch(namelist[i], base_dir, base_dir, prefix, is_last);
-            free(namelist[i]);
         }
+
+        free(namelist[i]);
     }
 
     free(namelist);
@@ -128,8 +113,9 @@ static void print_branch(struct dirent *namelist, char *current_path, const char
                 }
 
                 free(new_prefix);
-                free(entry[i]);
             }
+
+            free(entry[i]);
         }
 
         free(entry);
