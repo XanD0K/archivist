@@ -2,7 +2,9 @@
 
 // Libraries
 #include <dirent.h>
+#include <limits.h>
 #include <stdlib.h>
+#include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
 
@@ -67,6 +69,8 @@ bool match_directory_size(const char *path, off_t max_size, off_t min_size , off
         *total_size = 0;
     }
 
+    bool result = false;
+
     struct dirent **namelist;
     int n = scandir(path, &namelist, NULL, alphasort);
     if (n == -1)
@@ -112,7 +116,7 @@ bool match_directory_size(const char *path, off_t max_size, off_t min_size , off
 
     free(namelist);
 
-    return match_size(max_size, min_size, *total_size);    
+    result = match_size(max_size, min_size, *total_size);    
 
 cleanup:
     for (int i = 0; i < n; i++)
@@ -120,8 +124,7 @@ cleanup:
         free(namelist[i]);
     }
     free(namelist);
-    return match_size(max_size, min_size, *total_size);
-
+    return result;
 }
 
 // Checks if extension matches
