@@ -7,17 +7,17 @@
 // General flags shared across files
 typedef struct
 {
-    char *extension;
     bool human_readable;
     bool ignore_case;
     bool recursive;
     char *sort;
-} GeneralOptions;
+} CommonOptions;
 
 // Filter flags shared across files
 typedef struct
 {
     char *contains;
+    char *extension;
     off_t min_size;
     off_t max_size;
     char *type;

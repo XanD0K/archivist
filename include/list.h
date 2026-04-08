@@ -14,7 +14,7 @@ typedef int (*SortList)(const struct dirent **a, const struct dirent **b);
 // Structure to all CLI flags of 'list' functionality
 typedef struct
 {
-    GeneralOptions base;  // extension | human-readable | ignore-case | recursive | sort    
+    CommonOptions base;  // human-readable | ignore-case | recursive | sort    
     bool reverse;
     bool dir_first;
 } ListOptions;

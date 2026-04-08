@@ -6,8 +6,8 @@
 // Structure to all CLI flags of 'delete' functionality
 typedef struct
 {
-    GeneralOptions base;  // extension | human_readable | recursive
-    FilterOptions filter;  // contains | min_size | max_size | type
+    CommonOptions base;  // human_readable | recursive
+    FilterOptions filter;  // contains | extension | min_size | max_size | type
     ActionOptions action;  // dry-run | interactive | verbose
 
 } DeleteOptions;

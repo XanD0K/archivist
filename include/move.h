@@ -10,8 +10,8 @@
 // Structure to all CLI flags of 'move' functionality
 typedef struct
 {
-    GeneralOptions base;  // extension | recursive
-    FilterOptions filter;  // contains | min_size | max_size | type
+    CommonOptions base;  // recursive
+    FilterOptions filter;  // contains | extension | min_size | max_size | type
     ActionOptions action;  // dry-run | interactive | verbose
     bool force;
     bool skip;

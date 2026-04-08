@@ -8,8 +8,8 @@
 // Structure to all CLI flags of 'search' functionality
 typedef struct
 {
-    GeneralOptions base;  // extension | ignore-case | recursive
-    FilterOptions filter;  // min_size | max_size | type
+    CommonOptions base;  // ignore-case | recursive
+    FilterOptions filter;  // extension | min_size | max_size | type
     bool contains;
 } SearchOptions;
 
