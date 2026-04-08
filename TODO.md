@@ -3,14 +3,12 @@
 
 ## New features
 - [ ] Implement `list` feature
-- [-] `list` feature → implement comparation functions for name and version, and get rid of `alphasort` and `versionsort`
 - [ ] `list` feature → also prints in horizontal direction
 - [ ] Implement `rename` feature
 - [ ] Implement `backup` feature
 - [-] Implement `help` feature
 - [ ] Implement `log` feature
 - [ ] Implement `duplicate` feature
-- [ ] `move` feature → creates destination directory when validation fails
 - [ ] Implement `restore` feature
 - [ ] Helper function to get full path from a file/directory
 - [ ] Add more fields in the `search` feature output
@@ -18,15 +16,14 @@
 
 ## Refactoring tasks
 - [ ] Change `validade_command` to use `for` loop instead of `bsearch()`
-- [ ] Change `bsearch()` to my own implementation of a Binary Search
-- [ ] Modular function to create and validate path
 - [ ] Fix `validate_args()` with new max/min commands allowed
 - [ ] Change all commands logic validation/parse to remove repetitive code (boilerplate)
 - [ ] Change content retriever (`struct dirent`) to remove boilerplate
 - [ ] Change element validation to remove boilerplate
-- [ ] Refactor flags checker
-- [ ] Move `extension` flag from `GeneralOptions` to `FilterOptions` structure
-- [ ] Change `snprintf()` to `check_path_name_size()` on all files
+- [ ] Refactor flags checker (boilerplate in the beggining of each `CMD_element()` function)
+- [ ] Change type checker to use `d_type` as default and `struct stat` as fallback
+- [ ] Modular function to create and validate path
+
 
 ## Testing
 
@@ -53,5 +50,11 @@
 - [x] Implement `tree` feature
 - [x] Modular function to retrieve extensions
 - [x] Implement `move` feature
+- [x] `move` feature → creates destination directory when validation fails
 - [x] Fix `type` flag to better interact with other flags
 - [x] Implement `delete` feature
+- [x] Change `perror()` to `fprintf()` to padronize all error outputs
+- [x] Change `get_all_extensions()` to also convert extensions to lowercase
+- [x] Change `snprintf()` to `check_path_name_size()` on all files
+- [x] Move `extension` flag from `GeneralOptions` to `FilterOptions` structure
+- [x] `list` feature → implement comparation functions for name and version, and get rid of `alphasort` and `versionsort`

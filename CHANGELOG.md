@@ -1,14 +1,23 @@
 # Changelog
 
 
-## [0.5.1] - DATE
+## [0.5.1] - 2026-04-07
 ### Added
+- Created auxiliar funcion `free_extensions()` to free the entire array of extensions
+- Added `cmp_version()` to sort by version on `list` feature
 
 ### Changed
+- Changed `GeneralOptions` structure's name to `CommonOptions`
+- Changed all `perror()` to `fprintf()` to keep padronize error messages
+- `get_all_extensions()` also converts extension to lowercase, improving `strcasecmp()`
+- Changed prompt construction to use `asprintf()` instead of `snprintf()`
+- Changed path construction to use `check_path_name_size()`
 
 ### Fixed
-
-### Removed
+- Fixe memory leak on `get_all_extensions()`
+- Fixed typos, name collision and missing libraries on `utils.h`, `utils_filter.c` and `search_cmd.c`
+- Fixed typos, bugs and duplicated logic on `delete_element()` and `delete_directory()`
+- Fixed memory leak when using `get_all_extensions()`
 
 
 ## [0.5.0] - 2026-04-05
