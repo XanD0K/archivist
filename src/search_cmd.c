@@ -21,8 +21,8 @@
 // Prototypes
 static SearchOptions parse_search_opts(int argc, char **argv, int opt_start, bool *size_err);
 static void search_element(char *current_path, const char *base_dir, SearchOptions opts, const struct dirent *namelist, const char *searched, size_t *counter, bool *printed);
-static bool match_name(const char *current_name, const char *searched, bool contains, bool ignore_case);
-static bool match_extension(const char *current_name, const char *ext);
+static bool match_searched_name(const char *current_name, const char *searched, bool contains, bool ignore_case);
+static bool match_searched_extension(const char *current_name, const char *ext);
 
 // Searches for a specific file/directory
 int handle_search(int argc, char **argv)
@@ -76,7 +76,7 @@ int handle_search(int argc, char **argv)
     if (n == -1)
     {
         free(base_dir);
-        perror("scandir");
+        fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
         return 6;
     }
 
@@ -163,7 +163,7 @@ static SearchOptions parse_search_opts(int argc, char **argv, int opt_start, boo
             }
             case 'e':
             {
-                opts.base.extension = optarg;
+                opts.filter.extension = optarg;
                 break;
             }
             case 0:
@@ -200,9 +200,13 @@ static void search_element(char *current_path, const char *base_dir, SearchOptio
         return;
     }
 
-    struct stat st;
     char new_path[PATH_MAX];
-    snprintf(new_path, sizeof(new_path), "%s/%s", current_path, namelist->d_name);
+    if (check_path_name_size(new_path, sizeof(new_path), current_path, namelist->d_name) == -1)
+    {
+        return;
+    }
+
+    struct stat st;
     if (stat(new_path, &st) != 0)
     {
         return;
@@ -227,13 +231,13 @@ static void search_element(char *current_path, const char *base_dir, SearchOptio
     }
 
     // Checks for name equality
-    if (strcmp(namelist->d_name, "*") != 0 && !match_name(namelist->d_name, searched, opts.contains, opts.base.ignore_case))
+    if (strcmp(namelist->d_name, "*") != 0 && !match_searched_name(namelist->d_name, searched, opts.contains, opts.base.ignore_case))
     {
         return;
     }
 
     // Checks for extension
-    if (opts.base.extension && !match_extension(opts.base.extension, namelist->d_name))
+    if (opts.filter.extension && !match_searched_extension(opts.filter.extension, namelist->d_name))
     {
         return;
     }
@@ -260,7 +264,7 @@ static void search_element(char *current_path, const char *base_dir, SearchOptio
 }
 
 // Checks if strings match
-static bool match_name(const char *current_name, const char *searched, bool contains, bool ignore_case)
+static bool match_searched_name(const char *current_name, const char *searched, bool contains, bool ignore_case)
 {
     // Exact match
     if(!contains)
@@ -272,7 +276,7 @@ static bool match_name(const char *current_name, const char *searched, bool cont
     return result != NULL;
 }
 
-static bool match_extension(const char *current_name, const char *ext)
+static bool match_searched_extension(const char *current_name, const char *ext)
 {
     const char *ext_name = get_clean_extension(current_name);
     if (!ext_name || ext_name[0] == '\0')
