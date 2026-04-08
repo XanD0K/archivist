@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 
 // Libraries
+#include <ctype.h>
 #include <errno.h>
 #include <getopt.h>
 #include <inttypes.h>
@@ -26,6 +27,7 @@ static bool ignore_case;
 // Prototypes
 static ListOptions parse_list_opts(int argc, char **argv, int opt_start);
 static SortList get_sort_func(char *sort);
+static int cmp_version(const struct dirent **a, const struct dirent **b);
 static int cmp_name(const struct dirent **a, const struct dirent **b);
 static int cmp_date(const struct dirent **a, const struct dirent **b);
 static int cmp_size(const struct dirent **a, const struct dirent **b);
@@ -99,7 +101,7 @@ int handle_list(int argc, char **argv)
     if (n == -1)
     {
         free(base_dir);
-        perror("scandir");
+        fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
         return 6;
     }
 
@@ -135,6 +137,7 @@ int handle_list(int argc, char **argv)
     {
         const char *f_out = formatted_output(total_size);
         printf("Total size: %s\n", f_out);
+        free(f_out);
     }
     else
     {
@@ -238,7 +241,7 @@ static SortList get_sort_func(char *sort)
 {
     if (strcasecmp(sort, "version") == 0)
     {
-        return versionsort;
+        return cmp_version;
     }
     else if (strcasecmp(sort, "date") == 0)
     {
@@ -266,13 +269,125 @@ static int cmp_name(const struct dirent **a, const struct dirent **b)
         int is_dir = check_is_dir(*a, *b);
         if (is_dir != 0)
         {
-            return is_dir;
+            return is_dir * reverse;
         }
     }
 
-    int result = (!ignore_case) ? (strcmp((*a)->d_name, (*b)->d_name)) : (strcasecmp((*a)->d_name, (*b)->d_name)); 
+    int result = (!ignore_case)
+        ? (strcmp((*a)->d_name, (*b)->d_name))
+        : (strcasecmp((*a)->d_name, (*b)->d_name)); 
 
     return result * reverse;
+}
+
+// Organizes by version (distinguish alphabetical and numerical characters)
+static int cmp_version(const struct dirent **a, const struct dirent **b)
+{
+    // Directories before files
+    if (dir_first)
+    {
+        int is_dir = check_is_dir(*a, *b);
+        if (is_dir != 0)
+        {
+            return is_dir * reverse;
+        }
+    }
+
+    // Same strings
+    int result = (!ignore_case)
+        ? (strcmp((*a)->d_name, (*b)->d_name))
+        : (strcasecmp((*a)->d_name, (*b)->d_name));
+    if (result == 0)
+    {
+        return result;
+    }
+
+    // Points to the beggining of each word
+    const char *pA = (*a)->d_name;
+    const char *pB = (*b)->d_name;
+
+    while (*pA || *pB)
+    {
+        // Jumps the identical part of earch word
+        while (*pA && *pB)
+        {
+            if (isdigit(*pA) != 0 || isdigit(*pB) != 0)
+            {
+                break;
+            }
+
+            if (ignore_case)
+            {
+                if (toupper((unsigned char)*pA) != toupper((unsigned char)*pB))
+                {
+                    break;
+                }
+            }
+            else
+            {
+                if(*pA != *pB)
+                {
+                    break;
+                }
+            }
+
+            pA++;
+            pB++;
+        }
+
+        // Checks if one string ended before the other
+        if (!*pA || !*pB)
+        {
+            return (!*pA ? -1 : 1) * reverse;
+        }
+
+        // Checks if character is digit
+        bool is_digitA = isdigit((unsigned char)*pA);
+        bool is_digitB = isdigit((unsigned char)*pB);
+
+        // Both characters are digits
+        if(is_digitA && is_digitB)
+        {
+            char *endA, *endB;
+            unsigned long numA = strtoul(pA, &endA, 10);
+            unsigned long numB = strtoul(pB, &endB, 10);
+
+            // Numbers are different
+            if (numA != numB)
+            {
+                return ((numA > numB) ? 1 : -1) * reverse;
+            }
+
+            // Jumps to the string after numbers
+            pA = endA;
+            pB = endB;
+            continue;
+        }
+
+        if (is_digitA)
+        {
+            return -1 * reverse;
+        }
+        if (is_digitB)
+        {
+            return 1 * reverse;
+        }
+
+        // Compares 
+        int result = (ignore_case)
+            ? tolower((unsigned char)*pA) - tolower((unsigned char)*pB)
+            : (unsigned char)*pA - (unsigned char)*pB;
+
+        if (result != 0)
+        {
+            return result * reverse;
+        }
+
+        pA++;
+        pB++;        
+    }
+
+    return 0;
 }
 
 // Organizes by date
@@ -284,7 +399,7 @@ static int cmp_date(const struct dirent **a, const struct dirent **b)
         int is_dir = check_is_dir(*a, *b);
         if (is_dir != 0)
         {
-            return is_dir;
+            return is_dir * reverse;
         }
     }
 
@@ -316,7 +431,7 @@ static int cmp_size(const struct dirent **a, const struct dirent **b)
         int is_dir = check_is_dir(*a, *b);
         if (is_dir != 0)
         {
-            return is_dir;
+            return is_dir * reverse;
         }
     }
 
@@ -347,7 +462,7 @@ static int cmp_ext(const struct dirent **a, const struct dirent **b)
         int is_dir = check_is_dir(*a, *b);
         if (is_dir != 0)
         {
-            return is_dir;
+            return is_dir * reverse;
         }
     }
 
@@ -387,7 +502,11 @@ static void list_element(struct dirent *namelist, const char *current_path, size
     
     struct stat st;
     char new_path[PATH_MAX];
-    snprintf(new_path, sizeof(new_path), "%s/%s", current_path, namelist->d_name);    
+    if (check_path_name_size(new_path, sizeof(new_path), current_path, namelist->d_name) == -1)
+    {
+        (*err_counter)++;
+        return;
+    }    
     if (stat(new_path, &st) != 0)
     {
         fprintf(stderr, "Couldn't access %s: %s\n", new_path, strerror(errno));
@@ -416,7 +535,7 @@ static void list_element(struct dirent *namelist, const char *current_path, size
 
         if (n == -1)
         {
-            perror("scandir");
+            fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
             (*err_counter)++;
         }
 
