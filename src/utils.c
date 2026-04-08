@@ -1,8 +1,8 @@
 #define _GNU_SOURCE
 
 // Libraries
+#include <ctype.h>
 #include <errno.h>
-#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,7 +13,7 @@
 #include "cli_opts.h"
 #include "utils.h"
 
-// Checks for valid directory, setting (.) as default, and removing trailing /
+// Checks for valid directory, setting (.) as default, and removing trailing "/"
 char *get_valid_directory(const char *path)
 {
     const char *p = (!path) ? "." : path;
@@ -74,7 +74,7 @@ char *formatted_output(off_t total_size)
     return str;
 }
 
-// Gets extension without .
+// Gets extension without "."
 const char *get_clean_extension(const char *name)
 {
     const char *dot = strrchr(name, '.');
@@ -83,40 +83,79 @@ const char *get_clean_extension(const char *name)
 }
 
 // Retrieves user's selected extensions (-e flag)   
-Extension *get_all_extensions(char *exts, size_t *ext_count)
+Extension *get_all_extensions(char *exts, size_t *ext_counter)
 {
     if (exts == NULL || exts[0] == '\0')
     {
         return NULL;
     }
 
+    *ext_counter = 0;
+
     Extension *output_ext = NULL;
-    size_t ext_counter = 0;
     char *exts_cpy = strdup(exts);
+    if (!exts_cpy)
+    {
+        return NULL;
+    }
+
     char *token = strtok(exts_cpy, ",");
     while (token != NULL)
     {
-        output_ext = realloc(output_ext, (ext_counter + 1) * sizeof(Extension));
-        if (output_ext == NULL)
+        Extension *tmp = realloc(output_ext, (*ext_counter + 1) * sizeof(Extension));
+        if (tmp == NULL)
         {
-            for (size_t i = 0; i < ext_counter; i++)
-            {
-                free(output_ext->extension);
-            }
-            free(exts_cpy);
-            free(output_ext);
-            return NULL;
+            goto cleanup;
         }
-        output_ext[ext_counter].extension = strdup(token);
-        output_ext[ext_counter].file_count = 0;
-        output_ext[ext_counter].size = 0;
-        (*ext_count)++;
+
+        output_ext = tmp;
+        
+        output_ext[*ext_counter].extension = strdup(token);
+        if (!output_ext[*ext_counter].extension)
+        {
+            goto cleanup;
+        }
+
+        // Sets extension to lowercase
+        for (char *p = output_ext[*ext_counter].extension; *p; p++)
+        {
+            *p = tolower((unsigned char)*p);
+        }
+
+        output_ext[*ext_counter].file_count = 0;
+        output_ext[*ext_counter].size = 0;
+        (*ext_counter)++;
 
         token = strtok(NULL, ",");
     }
 
     free(exts_cpy);
     return output_ext;
+
+cleanup:
+    for (size_t i = 0; i < *ext_counter; i++)
+    {
+        free(output_ext[i].extension);
+    }
+    free(exts_cpy);
+    free(output_ext);
+    return NULL;
+}
+
+// Frees array of Extension structures, and each of their 'extension' field
+void free_extensions(Extension *ext, size_t ext_counter)
+{
+    if (!ext)
+    {
+        return;
+    }
+
+    for (int i = 0; i < ext_counter; i++)
+    {
+        free(ext[i].extension);
+    }
+
+    free(ext);
 }
 
 // Checks for 'help' flag
@@ -159,7 +198,7 @@ off_t get_size(char *size)
 
     if (errno == EINVAL || errno == ERANGE)
     {
-        perror("strtol");
+        fprintf(stderr, "Error on strtol(): %s\n", strerror(errno));
         return -1;
     }
     if (num < 0)
@@ -169,7 +208,7 @@ off_t get_size(char *size)
     }
     if (ptr == size)
     {
-        fprintf(stderr, "No digits were found\n");
+        fprintf(stderr, "No digits were found!\n");
         return -1;
     }
 
