@@ -2,6 +2,7 @@
 
 // Libraries
 #include <dirent.h>
+#include <errno.h>
 #include <limits.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -37,7 +38,7 @@ int handle_tree(int argc, char **argv)
     if (n == -1)
     {
         free(base_dir);
-        perror("scandir");
+        fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
         return 6;
     }
     
@@ -75,9 +76,13 @@ static void print_branch(struct dirent *namelist, char *current_path, const char
 {
     char *symbol = (is_last) ? "└── " : "├── ";
 
-    struct stat st;
     char new_path[PATH_MAX];
-    snprintf(new_path, sizeof(new_path), "%s/%s", current_path, namelist->d_name);
+    if (check_path_name_size(new_path, sizeof(new_path), current_path, namelist->d_name) == -1)
+    {
+        return;
+    }
+
+    struct stat st;
     if (stat(new_path, &st) != 0)
     {
         // Fallback to just printing the element

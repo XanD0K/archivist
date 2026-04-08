@@ -33,7 +33,6 @@ static void updates_list(Extension *ext, const char *extension_name, size_t ext_
 static void print_report_output(Extension *ext, size_t ext_counter, bool human_readable,
                                 size_t total_files, off_t total_size);
 static void clear_new_elements(Extension **ext, size_t old_capacity, size_t new_capacity);
-static void free_array(Extension *ext, size_t ext_capacity);
 
 // Creates a report about the content of a given directory
 int handle_report(int argc, char **argv)
@@ -94,7 +93,7 @@ int handle_report(int argc, char **argv)
     if (n == -1)
     {
         free(base_dir);
-        perror("scandir");
+        fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
         return 6;
     }
 
@@ -127,6 +126,7 @@ int handle_report(int argc, char **argv)
                 fprintf(stderr, "Error on memory allocation: %s\n", strerror(errno));
                 free(base_dir);
                 free(namelist);
+                free_extensions(ext, ext_counter);
                 return 10;
             }
         }
@@ -138,13 +138,14 @@ int handle_report(int argc, char **argv)
 
     // Retrieves user's selected extensions (-e flag)
     size_t user_ext_counter = 0;
-    Extension *user_ext = get_all_extensions(opts.base.extension, &user_ext_counter);    
+    Extension *user_ext = get_all_extensions(opts.filter.extension, &user_ext_counter);    
 
     if (user_ext == NULL)
     {
+        free(namelist);
+        free_extensions(ext, ext_counter);
         errno = ENOMEM;
         fprintf(stderr, "Error on memory allocation: %s\n", strerror(errno));
-        free(namelist);
         return 10;
     }
 
@@ -169,10 +170,10 @@ int handle_report(int argc, char **argv)
     // Prints output message
     print_report_output(to_print, print_count, opts.base.human_readable, total_files, total_size);
 
-    free_array(ext, ext_counter);
+    free_extensions(ext, ext_counter);
     if (user_ext != NULL)
     {
-        free_array(user_ext, user_ext_counter);
+        free_extensions(user_ext, user_ext_counter);
     }
     free(namelist);
     return 0;
@@ -205,7 +206,7 @@ static ReportOptions parse_report_opts(int argc, char **argv, int opt_start)
         {
             case 'e':
             {
-                opts.base.extension = optarg;
+                opts.filter.extension = optarg;
                 break;
             }
             case 'h':
@@ -309,10 +310,13 @@ static void report_element(char *current_path, const struct dirent *namelist, Re
         return;
     }
 
-    struct stat st;
     char new_path[PATH_MAX];
+    if (check_path_name_size(new_path, sizeof(new_path), current_path, namelist->d_name) == -1)
+    {
+        return;
+    }
 
-    snprintf(new_path, sizeof(new_path), "%s/%s", current_path, namelist->d_name);
+    struct stat st;
     if (stat(new_path, &st) != 0)
     {
         return;
@@ -469,18 +473,4 @@ static void clear_new_elements(Extension **ext, size_t old_capacity, size_t new_
         (*ext)[i].file_count = 0;
         (*ext)[i].size = 0;
     }
-}
-
-// Frees array of Extension structures, and each of their 'extension' field
-static void free_array(Extension *ext, size_t ext_capacity)
-{
-    if (ext == NULL)
-    {
-        return;
-    }
-    for (size_t i = 0; i < ext_capacity; i++)
-    {
-        free(ext[i].extension);
-    }
-    free(ext);
 }

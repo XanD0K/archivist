@@ -26,7 +26,7 @@ static void move_element(char *current_path, char *dst_dir, MoveOptions opts,
                          size_t *moved_files, size_t *created_directories);
 static char *match_existed_file(char *dst_dir, char *new_dst_dir, char *name, bool skip, bool force);
 
-// Moves files and subdirectories
+// Setup logic for 'move' feature
 int handle_move(int argc, char **argv)
 {
     // Checks for 'help' flag
@@ -74,23 +74,12 @@ int handle_move(int argc, char **argv)
         return 9;
     }
 
-    // Retrieves directory's content
-    struct dirent **namelist;
-    int n = scandir(base_dir, &namelist, NULL, alphasort);
-    if (n == -1)
-    {
-        free(base_dir);
-        free(dst_dir);
-        perror("scandir");
-        return 6;
-    }
-
     // Retrieves user's selected extensions (-e|--extension flag)
     Extension *ext = NULL;
     size_t ext_counter = 0;
-    if (opts.base.extension && opts.base.extension[0] != '\0')
+    if (opts.filter.extension && opts.filter.extension[0] != '\0')
     {
-        ext = get_all_extensions(opts.base.extension, &ext_counter);
+        ext = get_all_extensions(opts.filter.extension, &ext_counter);
         if (!ext)
         {
             free(base_dir);
@@ -99,6 +88,18 @@ int handle_move(int argc, char **argv)
             fprintf(stderr, "Error on memory allocation: %s\n", strerror(errno));
             return 10;
         }
+    }
+    
+    // Retrieves directory's content
+    struct dirent **namelist;
+    int n = scandir(base_dir, &namelist, NULL, alphasort);
+    if (n == -1)
+    {
+        free(base_dir);
+        free(dst_dir);
+        free_extensions(ext, ext_counter);
+        fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
+        return 6;
     }
 
     size_t moved_files = 0, created_directories = 0;
@@ -117,6 +118,7 @@ int handle_move(int argc, char **argv)
     free(base_dir);
     free(dst_dir);
     free(namelist);
+    free_extensions(ext, ext_counter);
 
     if (opts.action.dry_run)
     {
@@ -180,7 +182,7 @@ static char *get_valid_destination(const char *path)
             if (errno != EEXIST)
             {
                 free(cpy_path);
-                perror("mkdir");
+                fprintf(stderr, "Error on mkdir(): %s\n", strerror(errno));
                 return NULL;
             }
         }
@@ -244,7 +246,7 @@ static MoveOptions parse_move_opts(int argc, char **argv, int opt_start, bool *s
             }
             case 'e':
             {
-                opts.base.extension = optarg;
+                opts.filter.extension = optarg;
                 break;
             }
             case 'f':
@@ -260,8 +262,8 @@ static MoveOptions parse_move_opts(int argc, char **argv, int opt_start, bool *s
             }
             case 's':
             {
-                opts.skip = true;
                 opts.force = false;
+                opts.skip = true;
                 break;
             }
             case 't':
@@ -305,6 +307,7 @@ static MoveOptions parse_move_opts(int argc, char **argv, int opt_start, bool *s
     return opts;
 }
 
+// Move files from one directory to another
 static void move_element(char *current_path, char *dst_dir, MoveOptions opts,
                          struct dirent *namelist, Extension *ext, size_t ext_counter,
                          size_t *moved_files, size_t *created_directories)
@@ -346,12 +349,20 @@ static void move_element(char *current_path, char *dst_dir, MoveOptions opts,
         // Gets user's confirmation before creating new directory
         if (opts.action.interactive)
         {
-            char prompt[PATH_MAX];
-            snprintf(prompt, sizeof(prompt), "Creates directory %s", new_dst_dir);
+            char *prompt = NULL;
+            if (asprintf(&prompt, "Creates directory %s", new_dst_dir) == -1)
+            {
+                fprintf(stderr, "Error on asprintf(): %s\n", strerror(errno));
+                free(prompt);
+                return;
+            }            
             if (!get_answer(prompt))
             {
                 return;
+                free(prompt);
             }
+
+            free(prompt);
         }
 
         if (opts.action.dry_run)
@@ -439,12 +450,20 @@ static void move_element(char *current_path, char *dst_dir, MoveOptions opts,
     // Gets user's confirmation before moving file
     if (opts.action.interactive)
     {
-        char prompt[PATH_MAX];
-        snprintf(prompt, sizeof(prompt), "Move file '%s' from %s to %s?", namelist->d_name, current_path, final_dst);
-        if (!get_answer(prompt))
+        char *prompt = NULL;
+        if (asprintf(&prompt, "Move file '%s' from %s to %s?", namelist->d_name, current_path, final_dst) == -1)
         {
+            fprintf(stderr, "Error on asprintf(): %s\n", strerror(errno));
+            free(prompt);
             return;
         }
+        if (!get_answer(prompt))
+        {
+            free(prompt);
+            return;
+        }
+
+        free(prompt);
     }
 
     if (opts.action.dry_run)
@@ -468,6 +487,7 @@ static void move_element(char *current_path, char *dst_dir, MoveOptions opts,
     free(final_dst);
 }
 
+// Defines behaviour when file already exists on destination
 static char *match_existed_file(char *dst_dir, char *new_dst_dir, char *name, bool skip, bool force)
 {
     if (skip)
