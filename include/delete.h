@@ -13,6 +13,7 @@ typedef struct
 } DeleteOptions;
 
 // Prototypes
-int handle_delete(int argc, char **argv);
+int handle_delete(int argc, char **argv, int min_args);
+int parse_delete_options(int argc, char **argv, int opt_start, void *opts_out);
 
 #endif

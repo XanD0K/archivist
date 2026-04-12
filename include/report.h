@@ -15,11 +15,11 @@ typedef int (*SortReport)(const void *a, const void *b);
 typedef struct
 {
     CommonOptions base;  // human-readable | recursive | sort
-    FilterOptions filter;  // extension
-    
+    FilterOptions filter;  // extension    
 } ReportOptions;
 
 // Prototypes
-int handle_report(int argc, char **argv);
+int handle_report(int argc, char **argv, int min_args);
+int parse_report_opts(int argc, char **argv, int opt_start, void *opts_out);
 
 #endif

@@ -13,17 +13,19 @@
 #include <unistd.h>
 
 // Headers
+#include "cli_parse_common.h"
+#include "commands.h"
 #include "help.h"
 #include "report.h"
 #include "utils.h"
 
 // Prototypes
-static ReportOptions parse_report_opts(int argc, char **argv, int opt_start);
+static bool check_sort(char *sort, const char **sorts, size_t len);
 static SortReport get_sort_func(char *sort);
-static int cmp_name(const void *a, const void *b);
-static int cmp_size(const void *a, const void *b);
-static int cmp_quantity(const void *a, const void *b);
-static void report_element(char *current_path, const struct dirent *namelist, ReportOptions opts,
+static int cmp_name_qsort(const void *a, const void *b);
+static int cmp_size_qsort(const void *a, const void *b);
+static int cmp_quantity_qsort(const void *a, const void *b);
+static void report_element(char *current_path, const struct dirent *namelist, ReportOptions *opts,
                            Extension *ext, size_t *ext_counter, size_t *ext_capacity,
                            size_t *total_files, off_t *total_size);
 static ssize_t find_extension_in_list(const char *extension, Extension *ext, size_t ext_counter);
@@ -35,65 +37,53 @@ static void print_report_output(Extension *ext, size_t ext_counter, bool human_r
 static void clear_new_elements(Extension **ext, size_t old_capacity, size_t new_capacity);
 
 // Creates a report about the content of a given directory
-int handle_report(int argc, char **argv)
+int handle_report(int argc, char **argv, int min_args)
 {
-    // Checks for 'help' flag
-    if (check_help(argc, argv[2]))
+    CommandContext *context = setup_command(argc, argv, min_args, print_report_help,
+                                            parse_report_opts, sizeof(ReportOptions));
+    if (!context)
     {
-        // Prints help message for 'report' functionality
-        print_report_help();
-        return 0;
+        return 10;
     }
-
-    // Defines starting values
-    char *dir_path = NULL;
-    int opt_start = 2;
-    if (argc >= 3 && argv[2][0] != '-')
+    if (context->error_code != 0)
     {
-        dir_path = argv[2];
-        opt_start = 3;
-    }
-
-    // Gets valid base directory (default: .)
-    char *base_dir = get_valid_directory(dir_path);
-    if (!base_dir)
-    {
-        return 4;
+        free_command_context(context);
+        return (context->error_code == -1) ? 0 : context->error_code;
     }
 
     // Parses CLI arguments
-    ReportOptions opts = parse_report_opts(argc, argv, opt_start);
+    ReportOptions *opts = (ReportOptions*)context->opts;
 
     // Default sort method
-    SortReport sorter = cmp_name;
+    SortReport sorter = cmp_name_qsort;
 
-    if (opts.base.sort != NULL &&  strcasecmp(opts.base.sort, "name") != 0)
+    if (opts->base.sort &&  strcasecmp(opts->base.sort, "name") != 0)
     {
         // All sort options
         const char *sorts[] = {"name", "size", "quantity"};
         size_t len = sizeof(sorts) / sizeof(sorts[0]);
 
-        if (!check_sort(opts.base.sort, sorts, len))
+        if (!check_sort(opts->base.sort, sorts, len))
         {
             errno = EINVAL;
             fprintf(stderr, "Invalid sort argument: %s\n"
                             "Help for report command: ./archivist report help\n"
                             "Usage: ./archivist report [DIRECTORY] [FLAGS]\n",
                             strerror(errno));
-            free(base_dir);
+            free_command_context(context);
             return 5;
         }
 
-        sorter = get_sort_func(opts.base.sort);
+        sorter = get_sort_func(opts->base.sort);
     }    
 
     // Parse directory
     struct dirent **namelist;
-    int n = scandir(base_dir, &namelist, NULL, alphasort);
+    int n = scandir(context->base_dir, &namelist, NULL, alphasort);
     if (n == -1)
     {
-        free(base_dir);
         fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
+        free_command_context(context);
         return 6;
     }
 
@@ -105,7 +95,7 @@ int handle_report(int argc, char **argv)
     {
         errno = ENOMEM;
         fprintf(stderr, "Error on memory allocation: %s\n", strerror(errno));
-        free(base_dir);
+        free_command_context(context);
         free(namelist);
         return 10;
     }
@@ -118,13 +108,13 @@ int handle_report(int argc, char **argv)
     {
         if (strcmp(namelist[i]->d_name, ".") != 0 && strcmp(namelist[i]->d_name, "..") != 0)
         {
-            report_element(base_dir, namelist[i], opts, ext, &ext_counter,
+            report_element(context->base_dir, namelist[i], opts, ext, &ext_counter,
                            &ext_capacity, &total_files, &total_size);
             if (ext == NULL)
             {
                 errno = ENOMEM;
                 fprintf(stderr, "Error on memory allocation: %s\n", strerror(errno));
-                free(base_dir);
+                free_command_context(context);
                 free(namelist);
                 free_extensions(ext, ext_counter);
                 return 10;
@@ -134,18 +124,17 @@ int handle_report(int argc, char **argv)
         free(namelist[i]);
     }
 
-    free(base_dir);
-
     // Retrieves user's selected extensions (-e flag)
     size_t user_ext_counter = 0;
-    Extension *user_ext = get_all_extensions(opts.filter.extension, &user_ext_counter);    
+    Extension *user_ext = get_all_extensions(opts->filter.extension, &user_ext_counter);    
 
     if (user_ext == NULL)
     {
-        free(namelist);
-        free_extensions(ext, ext_counter);
         errno = ENOMEM;
         fprintf(stderr, "Error on memory allocation: %s\n", strerror(errno));
+        free(namelist);
+        free_extensions(ext, ext_counter);
+        free_command_context(context);
         return 10;
     }
 
@@ -168,7 +157,7 @@ int handle_report(int argc, char **argv)
     qsort(to_print, print_count, sizeof(Extension), sorter);
 
     // Prints output message
-    print_report_output(to_print, print_count, opts.base.human_readable, total_files, total_size);
+    print_report_output(to_print, print_count, opts->base.human_readable, total_files, total_size);
 
     free_extensions(ext, ext_counter);
     if (user_ext != NULL)
@@ -176,63 +165,42 @@ int handle_report(int argc, char **argv)
         free_extensions(user_ext, user_ext_counter);
     }
     free(namelist);
+    free_command_context(context);
     return 0;
 }
 
 // Parses through CLI arguments for 'report' functionality
-static ReportOptions parse_report_opts(int argc, char **argv, int opt_start)
+int parse_report_opts(int argc, char **argv, int opt_start, void *opts_out)
 {
-    ReportOptions opts = {0};
+    ReportOptions *opts = (ReportOptions*)opts_out;
 
-    static struct option long_opts[] =
+    int ret;
+    ret = parse_common_opts(argc, argv, opt_start, &opts->base);
+    if (ret != 0)
     {
-        {"extension", required_argument, 0, 'e'},
-        {"human-readable", no_argument, 0, 'h'},
-        {"sort", required_argument, 0, 's'},
-        {"recursive", no_argument, 0, 'R'},
-        {NULL, 0, NULL, 0}
-    };
-
-    int opt = 0;
-    int long_index = 0;
-    char *short_opts = "e:hs:R";
-
-    // Defines starting index to search for arguments
-    optind = opt_start;
-
-    while ((opt = getopt_long(argc, argv, short_opts, long_opts, &long_index)) != -1)
+        return ret;
+    }
+    ret = parse_filter_options(argc, argv, opt_start, &opts->filter);
+    if (ret != 0)
     {
-        switch (opt)
+        return ret;
+    }
+
+    return 0;
+}
+
+// Checks for valid sort method
+static bool check_sort(char *sort, const char **sorts, size_t len)
+{
+    for (size_t i = 0; i < len; i++)
+    {
+        if (strcasecmp(sort, sorts[i]) == 0)
         {
-            case 'e':
-            {
-                opts.filter.extension = optarg;
-                break;
-            }
-            case 'h':
-            {
-                opts.base.human_readable = true;
-                break;
-            }
-            case 's':
-            {
-                opts.base.sort = optarg;
-                break;
-            }
-            case 'R':
-            {
-                opts.base.recursive = true;
-                break;
-            }
-            case 0:
-            case '?':
-            {
-                break;
-            }
+            return true;
         }
     }
 
-    return opts;
+    return false;
 }
 
 // Returns specific sort function based on chosen sort method
@@ -240,24 +208,24 @@ static SortReport get_sort_func(char *sort)
 {
     if (strcasecmp(sort, "name") == 0)
     {
-        return cmp_name;
+        return cmp_name_qsort;
     }
     else if (strcasecmp(sort, "size") == 0)
     {
-        return cmp_size;
+        return cmp_size_qsort;
     }
     else if (strcasecmp(sort, "quantity") == 0)
     {
-        return cmp_quantity;
+        return cmp_quantity_qsort;
     }
 
     // Fallback
-    return cmp_name;
+    return cmp_name_qsort;
     
 }
 
 // Organizes by name
-static int cmp_name(const void *a, const void *b)
+static int cmp_name_qsort(const void *a, const void *b)
 {
     const Extension *extA = (const Extension *)(a);
     const Extension *extB = (const Extension *)(b);
@@ -275,7 +243,7 @@ static int cmp_name(const void *a, const void *b)
 }
 
 // Organizes by size
-static int cmp_size(const void *a, const void *b)
+static int cmp_size_qsort(const void *a, const void *b)
 {
     const Extension *extA = (const Extension *)(a);
     const Extension *extB = (const Extension *)(b);
@@ -292,7 +260,7 @@ static int cmp_size(const void *a, const void *b)
 }
 
 // Organizes by quantity
-static int cmp_quantity(const void *a, const void *b)
+static int cmp_quantity_qsort(const void *a, const void *b)
 {
     const Extension *extA = (const Extension *)(a);
     const Extension *extB = (const Extension *)(b);
@@ -300,8 +268,8 @@ static int cmp_quantity(const void *a, const void *b)
     return ((int)extB->file_count - (int)extA->file_count);
 }
 
-// Calculates porpotion of each extension on directory
-static void report_element(char *current_path, const struct dirent *namelist, ReportOptions opts,
+// Calculates porpotion of each extension on given directory
+static void report_element(char *current_path, const struct dirent *namelist, ReportOptions *opts,
                            Extension *ext, size_t *ext_counter, size_t *ext_capacity,
                            size_t *total_files, off_t *total_size)
 {
@@ -323,7 +291,7 @@ static void report_element(char *current_path, const struct dirent *namelist, Re
     }
 
     // Checks for recursive flag
-    if (opts.base.recursive && S_ISDIR(st.st_mode))
+    if (opts->base.recursive && S_ISDIR(st.st_mode))
     {
         struct dirent **entry;
         int n = scandir(new_path, &entry, NULL, alphasort);

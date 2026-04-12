@@ -14,6 +14,7 @@ typedef struct
 } SearchOptions;
 
 // Prototypes
-int handle_search(int argc, char **argv);
+int handle_search(int argc, char **argv, int min_args);
+int parse_search_opts(int argc, char **argv, int opt_start, void *opts_out);
 
 #endif

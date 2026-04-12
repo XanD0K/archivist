@@ -14,97 +14,68 @@
 #include <unistd.h>
 
 // Headers
+#include "cli_parse_common.h"
+#include "commands.h"
 #include "help.h"
 #include "list.h"
 #include "utils.h"
-
-// Globals
-static char *base_dir = NULL;
-static int reverse;
-static bool dir_first;
-static bool ignore_case;
+#include "utils_sort.h"
 
 // Prototypes
-static ListOptions parse_list_opts(int argc, char **argv, int opt_start);
-static SortList get_sort_func(char *sort);
-static int cmp_version(const struct dirent **a, const struct dirent **b);
-static int cmp_name(const struct dirent **a, const struct dirent **b);
-static int cmp_date(const struct dirent **a, const struct dirent **b);
-static int cmp_size(const struct dirent **a, const struct dirent **b);
-static int cmp_ext(const struct dirent **a, const struct dirent **b);
-static int check_is_dir (const struct dirent *a, const struct dirent *b);
-static void list_element(struct dirent *namelist, const char *current_path, size_t *f_counter,
-                          size_t *dir_counter, size_t *slink_counter, size_t *err_counter,
-                          off_t *total_size, SortList sorter, ListOptions opts);
+static void list_element(struct dirent *namelist, const char *base_dir, const char *current_path,
+                         size_t *f_counter, size_t *dir_counter, size_t *slink_counter, size_t *err_counter,
+                          off_t *total_size, SortFlag sorter, ListOptions *opts);
 
 // Lists information from a given directory
-int handle_list(int argc, char **argv)
+int handle_list(int argc, char **argv, int min_args)
 {
-    // Checks for 'help' flag
-    if (check_help(argc, argv[2]))
+    CommandContext *context = setup_command(argc, argv, min_args, print_list_help,
+                                            parse_list_opts, sizeof(ListOptions));
+    if (!context)
     {
-        // Prints help message for 'list' functionality
-        print_list_help();
-        return 0;
+        return 10;
+    }
+    if (context->error_code != 0)
+    {
+        free_command_context(context);
+        return (context->error_code == -1) ? 0 : context->error_code;
     }
 
-    // Defines starting values
-    const char *dir_path = NULL;
-    int opt_start = 2;    
-    if (argc >= 3 && argv[2][0] != '-')
+    ListOptions *opts = (ListOptions*)context->opts;
+
+    // Redefines values for comparation variables
+    cmp_opts.reverse = (opts->reverse) ? -1 : 1;
+    cmp_opts.dir_first = opts->dir_first;
+    cmp_opts.ignore_case = opts->base.ignore_case;
+    cmp_opts.base_dir = context->base_dir;
+
+    // Default sorter function
+    SortFlag sorter = cmp_name_scandir;
+    if (opts->base.sort && strcasecmp(opts->base.sort, "name") != 0)
     {
-        dir_path = argv[2];
-        opt_start = 3;
-    }
-
-    // Gets valid directory (default: .)
-    base_dir = get_valid_directory(dir_path);
-    if (!base_dir)
-    {
-        return 4;
-    }
-
-    // Parses CLI arguments
-    ListOptions opts = parse_list_opts(argc, argv, opt_start);
-
-    reverse = (opts.reverse) ? -1 : 1;
-    dir_first = opts.dir_first;
-    ignore_case = opts.base.ignore_case;
-
-    const char *sorts[] = {"date", "extension", "name", "size", "version"};
-
-    // Gets sorter function
-    SortList sorter = cmp_name;
-    if (strcasecmp(opts.base.sort, "name") != 0)
-    {
+        const char *sorts[] = {"date", "extension", "name", "size", "version"};
         size_t len = sizeof(sorts)/sizeof(sorts[0]);
-        // Checks for valid sort method
-        if (!check_sort(opts.base.sort, sorts, len))
+        
+        // Updates sorter function
+        sorter = get_sort_function(opts->base.sort, sorts, len);
+        if (!sorter)
         {
-            free(base_dir);
-            errno = EINVAL;
-            fprintf(stderr, "Invalid sort argument: %s\n"
-                            "Help for list command: ./archisvist list help\n"
-                            "Usage: ./archivist list [DIRECTORY] [FLAGS]\n",
-                            strerror(errno));
+            free_command_context(context);
             return 5;
         }
-
-        // Gets sort function for given sort method
-        sorter = get_sort_func(opts.base.sort);
     }
 
-    // Gets all elements in directory
+    // Gets directory's content
     struct dirent **namelist;
-    int n = scandir(base_dir, &namelist, NULL, sorter);
-
+    int n = scandir(context->base_dir, &namelist, NULL, sorter);
     if (n == -1)
     {
-        free(base_dir);
         fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
+        free_command_context(context);
         return 6;
     }
 
+    // Initializes counters
     size_t f_counter = 0, dir_counter = 0, slink_counter = 0, err_counter = 0;    
     off_t total_size = 0;
 
@@ -112,30 +83,29 @@ int handle_list(int argc, char **argv)
     {
         if (strcmp(namelist[i]->d_name, ".") != 0 && strcmp(namelist[i]->d_name, "..") != 0)
         {
-            if (!opts.base.recursive)
+            if (!opts->base.recursive)
             {
                 // Prints file's name
                 printf("%s\n", namelist[i]->d_name);
             }            
             // Recursively checks directory elements and updates counters
-            list_element(namelist[i], base_dir, &f_counter, &dir_counter, &slink_counter,
-                          &err_counter, &total_size, sorter, opts);
+            list_element(namelist[i], context->base_dir, context->base_dir, &f_counter, &dir_counter,
+                         &slink_counter, &err_counter, &total_size, sorter, opts);
         }
         
         free(namelist[i]);
     }
 
     free(namelist);
-    free(base_dir);
 
     // Prints f_counter, dir_counter and total_size variables
     printf("Directories: %zu\n"
            "Files: %zu\n"
            "Simbolic Links: %zu\n", dir_counter, f_counter, slink_counter);
     
-    if (opts.base.human_readable)
+    if (opts->base.human_readable)
     {
-        const char *f_out = formatted_output(total_size);
+        char *f_out = formatted_output(total_size);
         printf("Total size: %s\n", f_out);
         free(f_out);
     }
@@ -146,37 +116,41 @@ int handle_list(int argc, char **argv)
     if (err_counter != 0)
     {
         printf("(Finished listing with %zu erros)\n", err_counter);
+        free_command_context(context);
         return 7;
     }
-    
+
+    free_command_context(context);
     return 0;
 }
 
 // Parses through CLI arguments for 'list' functionality
-static ListOptions parse_list_opts(int argc, char **argv, int opt_start)
+int parse_list_opts(int argc, char **argv, int opt_start, void *opts_out)
 {
     // Declares structure
-    ListOptions opts = {0};
+    ListOptions *opts = (ListOptions*)opts_out;
 
     // Sets default values
-    opts.base.sort = "name";
-    opts.base.ignore_case = true;
-    
+    opts->base.sort = "name";
+    opts->base.ignore_case = true;
+
+    int ret = parse_common_opts(argc, argv, opt_start, &opts->base);
+    if (ret != 0)
+    {
+        return ret;
+    }
+
     // Sets array of flags
     static struct option long_opts[] =
     {
-        {"human-readable", no_argument, 0, 'h'},
-        {"ignore-case", no_argument, 0, 'i'},
         {"reverse", no_argument, 0, 'r'},
-        {"sort", required_argument, 0, 's'},
-        {"recursive", no_argument, 0, 'R'},
         {"dir-first", no_argument, 0, 0},
         {NULL, 0, NULL, 0}
     };
 
     int opt = 0;
     int long_index = 0;
-    char *short_opts = "hirs:R";
+    char *short_opts = "r";
 
     // Defines starting index to search for arguments
     optind = opt_start;
@@ -185,34 +159,10 @@ static ListOptions parse_list_opts(int argc, char **argv, int opt_start)
     {
         switch (opt)
         {
-            // Human readable
-            case 'h':
-            {
-                opts.base.human_readable = true;
-                break;
-            }
-            // Ignore case
-            case 'i':
-            {
-                opts.base.ignore_case = false;
-                break;
-            }
-            // Oder
-            case 's':
-            {
-                opts.base.sort = optarg;
-                break;
-            }
             // Reverse
             case 'r':
             {
-                opts.reverse = true;
-                break;
-            }
-            // Recursive
-            case 'R':
-            {
-                opts.base.recursive = true;
+                opts->reverse = true;
                 break;
             }
             // Long arguments
@@ -220,7 +170,7 @@ static ListOptions parse_list_opts(int argc, char **argv, int opt_start)
             {
                 if (strcmp(long_opts[long_index].name, "dir-first") == 0)
                 {
-                    opts.dir_first = true;
+                    opts->dir_first = true;
                 }
 
                 break;
@@ -233,280 +183,27 @@ static ListOptions parse_list_opts(int argc, char **argv, int opt_start)
         }
     }
 
-    return opts;
-}
-
-// Returns specific sort function based on chosen sort method
-static SortList get_sort_func(char *sort)
-{
-    if (strcasecmp(sort, "version") == 0)
-    {
-        return cmp_version;
-    }
-    else if (strcasecmp(sort, "date") == 0)
-    {
-        return cmp_date;
-    }
-    else if (strcasecmp(sort, "size") == 0)
-    {
-        return cmp_size;
-    }
-    else if (strcasecmp(sort, "extension") == 0)
-    {
-        return cmp_ext;
-    }
-
-    // Fallback
-    return cmp_name;
-}
-
-// Organizes by name
-static int cmp_name(const struct dirent **a, const struct dirent **b)
-{
-    // Directories before files
-    if (dir_first)
-    {
-        int is_dir = check_is_dir(*a, *b);
-        if (is_dir != 0)
-        {
-            return is_dir * reverse;
-        }
-    }
-
-    int result = (!ignore_case)
-        ? (strcmp((*a)->d_name, (*b)->d_name))
-        : (strcasecmp((*a)->d_name, (*b)->d_name)); 
-
-    return result * reverse;
-}
-
-// Organizes by version (distinguish alphabetical and numerical characters)
-static int cmp_version(const struct dirent **a, const struct dirent **b)
-{
-    // Directories before files
-    if (dir_first)
-    {
-        int is_dir = check_is_dir(*a, *b);
-        if (is_dir != 0)
-        {
-            return is_dir * reverse;
-        }
-    }
-
-    // Same strings
-    int result = (!ignore_case)
-        ? (strcmp((*a)->d_name, (*b)->d_name))
-        : (strcasecmp((*a)->d_name, (*b)->d_name));
-    if (result == 0)
-    {
-        return result;
-    }
-
-    // Points to the beggining of each word
-    const char *pA = (*a)->d_name;
-    const char *pB = (*b)->d_name;
-
-    while (*pA || *pB)
-    {
-        // Jumps the identical part of earch word
-        while (*pA && *pB)
-        {
-            if (isdigit(*pA) != 0 || isdigit(*pB) != 0)
-            {
-                break;
-            }
-
-            if (ignore_case)
-            {
-                if (toupper((unsigned char)*pA) != toupper((unsigned char)*pB))
-                {
-                    break;
-                }
-            }
-            else
-            {
-                if(*pA != *pB)
-                {
-                    break;
-                }
-            }
-
-            pA++;
-            pB++;
-        }
-
-        // Checks if one string ended before the other
-        if (!*pA || !*pB)
-        {
-            return (!*pA ? -1 : 1) * reverse;
-        }
-
-        // Checks if character is digit
-        bool is_digitA = isdigit((unsigned char)*pA);
-        bool is_digitB = isdigit((unsigned char)*pB);
-
-        // Both characters are digits
-        if(is_digitA && is_digitB)
-        {
-            char *endA, *endB;
-            unsigned long numA = strtoul(pA, &endA, 10);
-            unsigned long numB = strtoul(pB, &endB, 10);
-
-            // Numbers are different
-            if (numA != numB)
-            {
-                return ((numA > numB) ? 1 : -1) * reverse;
-            }
-
-            // Jumps to the string after numbers
-            pA = endA;
-            pB = endB;
-            continue;
-        }
-
-        if (is_digitA)
-        {
-            return -1 * reverse;
-        }
-        if (is_digitB)
-        {
-            return 1 * reverse;
-        }
-
-        // Compares 
-        int result = (ignore_case)
-            ? tolower((unsigned char)*pA) - tolower((unsigned char)*pB)
-            : (unsigned char)*pA - (unsigned char)*pB;
-
-        if (result != 0)
-        {
-            return result * reverse;
-        }
-
-        pA++;
-        pB++;        
-    }
-
     return 0;
 }
 
-// Organizes by date
-static int cmp_date(const struct dirent **a, const struct dirent **b)
-{
-    // Directories before files
-    if (dir_first)
-    {
-        int is_dir = check_is_dir(*a, *b);
-        if (is_dir != 0)
-        {
-            return is_dir * reverse;
-        }
-    }
-
-    struct stat sa, sb;
-    char pathA[PATH_MAX], pathB[PATH_MAX];
-
-    // Constructs full path for current elements
-    snprintf(pathA, sizeof(pathA), "%s/%s", base_dir, (*a)->d_name);
-    snprintf(pathB, sizeof(pathB), "%s/%s", base_dir, (*b)->d_name); 
-
-    // Gets element's data
-    if (stat(pathA, &sa) != 0 || stat(pathB, &sb) != 0)
-    {
-        // Fallback to name if fails
-        return (!ignore_case) ? (strcmp((*a)->d_name, (*b)->d_name)) :(strcasecmp((*a)->d_name, (*b)->d_name));
-    }
-    
-    int result = (sa.st_mtime > sb.st_mtime) - (sa.st_mtime < sb.st_mtime);
-    
-    return result * reverse;
-}
-
-// Organizes by size
-static int cmp_size(const struct dirent **a, const struct dirent **b)
-{
-    // Directories before files
-    if (dir_first)
-    {
-        int is_dir = check_is_dir(*a, *b);
-        if (is_dir != 0)
-        {
-            return is_dir * reverse;
-        }
-    }
-
-    struct stat sa, sb;
-    char pathA[PATH_MAX], pathB[PATH_MAX];
-
-    snprintf(pathA, sizeof(pathA), "%s/%s", base_dir, (*a)->d_name);
-    snprintf(pathB, sizeof(pathB), "%s/%s", base_dir, (*b)->d_name);
-
-    if (stat(pathA, &sa) != 0 || stat(pathB, &sb) != 0)
-    {
-        // Fallback to name if fails
-        return (strcasecmp((*a)->d_name, (*b)->d_name));
-    }
-
-    int result = (sa.st_size > sb.st_size) - (sa.st_size < sb.st_size);
-    
-    return result * reverse;
-
-}
-
-// Organizes by extension
-static int cmp_ext(const struct dirent **a, const struct dirent **b)
-{
-    // Directories before files
-    if (dir_first)
-    {
-        int is_dir = check_is_dir(*a, *b);
-        if (is_dir != 0)
-        {
-            return is_dir * reverse;
-        }
-    }
-
-    const char *extA = get_clean_extension((*a)->d_name);
-    const char *extB = get_clean_extension((*b)->d_name);
-
-    int result = strcasecmp(extA, extB);
-
-    return result * reverse;
-}
-
-// Helper function that puts directories before files
-static int check_is_dir (const struct dirent *a, const struct dirent *b)
-{
-    int is_dir_a = (a->d_type == DT_DIR);
-    int is_dir_b = (b->d_type == DT_DIR);
-
-    // Folders before files
-    if (is_dir_a != is_dir_b)
-    {
-        int result = is_dir_b - is_dir_a;
-        return result * reverse;
-    }
-
-    return 0;
-}
-
-// Traverses through every element and updates counters
-static void list_element(struct dirent *namelist, const char *current_path, size_t *f_counter,
-                          size_t *dir_counter, size_t *slink_counter, size_t *err_counter,
-                          off_t *total_size, SortList sorter, ListOptions opts)
+// Lists current element and updates counters
+static void list_element(struct dirent *namelist, const char *base_dir, const char *current_path,
+                         size_t *f_counter, size_t *dir_counter, size_t *slink_counter, size_t *err_counter,
+                          off_t *total_size, SortFlag sorter, ListOptions *opts)
 {
     if (strcmp(namelist->d_name, ".") == 0 || strcmp(namelist->d_name, "..") == 0)
     {
         return;
     }
-    
-    struct stat st;
+
     char new_path[PATH_MAX];
     if (check_path_name_size(new_path, sizeof(new_path), current_path, namelist->d_name) == -1)
     {
         (*err_counter)++;
         return;
-    }    
+    }
+
+    struct stat st;
     if (stat(new_path, &st) != 0)
     {
         fprintf(stderr, "Couldn't access %s: %s\n", new_path, strerror(errno));
@@ -542,7 +239,7 @@ static void list_element(struct dirent *namelist, const char *current_path, size
         for (int i = 0; i < n; i++)
         {
             // Recursively checks directory elements and updates counters
-            list_element(entry[i], new_path, f_counter, dir_counter, slink_counter,
+            list_element(entry[i], base_dir, new_path, f_counter, dir_counter, slink_counter,
                           err_counter, total_size, sorter, opts);
             free(entry[i]);
         }
@@ -550,7 +247,7 @@ static void list_element(struct dirent *namelist, const char *current_path, size
         free(entry);
     }
 
-    if (opts.base.recursive)
+    if (opts->base.recursive)
     {
         // Prints file's name
         const char *suffix = get_suffix(new_path, base_dir);

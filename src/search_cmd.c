@@ -13,70 +13,50 @@
 #include <unistd.h>
 
 // Headers
+#include "cli_parse_common.h"
+#include "commands.h"
 #include "help.h"
 #include "search_cmd.h"
 #include "utils.h"
 #include "utils_filter.h"
 
 // Prototypes
-static SearchOptions parse_search_opts(int argc, char **argv, int opt_start, bool *size_err);
-static void search_element(char *current_path, const char *base_dir, SearchOptions opts, const struct dirent *namelist, const char *searched, size_t *counter, bool *printed);
+static void search_element(char *current_path, const char *base_dir, SearchOptions *opts, const struct dirent *namelist, const char *searched, size_t *counter, bool *printed);
 static bool match_searched_name(const char *current_name, const char *searched, bool contains, bool ignore_case);
 static bool match_searched_extension(const char *current_name, const char *ext);
 
 // Searches for a specific file/directory
-int handle_search(int argc, char **argv)
+int handle_search(int argc, char **argv, int min_args)
 {
-    // Checks for 'help' flag
-    if (check_help(argc, argv[2]))
+    CommandContext *context = setup_command(argc, argv, min_args, print_search_help,
+                                            parse_search_opts, sizeof(SearchOptions));
+    if (!context)
     {
-        // Prints help message for 'search' functionality
-        print_search_help();
-        return 0;
+        return 10;
     }
+    if (context->error_code != 0)
+    {
+        free_command_context(context);
+        return (context->error_code == -1) ? 0 : context->error_code;
+    }
+
+    SearchOptions *opts = (SearchOptions*)context->opts;
 
     char *searched_name = strdup(argv[2]);
     if (!searched_name)
     {
-        fprintf(stderr, "Couldn't duplicate string '%s': %s\n", argv[2], strerror(errno));
+        fprintf(stderr, "Error on strdup(): %s\n", strerror(errno));
+        free_command_context(context);
         return 8;
     }
 
-    // Defines starting values
-    const char *dir_path = NULL;
-    int opt_start = 3;
-    // Directory was provided
-    if (argc >= 4 && argv[3][0] != '-')
-    {
-        dir_path = argv[3];
-        opt_start = 4;
-    }
-
-    // Gets valid directory (default: .)
-    char *base_dir = get_valid_directory(dir_path);
-    if (!base_dir)
-    {
-        return 4;
-    }
-
-    bool size_err = false;
-    // Parses CLI arguments
-    SearchOptions opts = parse_search_opts(argc, argv, opt_start, &size_err);
-    if (size_err)
-    {
-        free(base_dir);
-        errno = EIO;
-        fprintf(stderr, "Invalid size: %s", strerror(errno));
-        return 9;
-    }
-
     struct dirent **namelist;
-    int n = scandir(base_dir, &namelist, NULL, alphasort);
+    int n = scandir(context->base_dir, &namelist, NULL, alphasort);
 
     if (n == -1)
     {
-        free(base_dir);
         fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
+        free_command_context(context);
         return 6;
     }
 
@@ -86,53 +66,63 @@ int handle_search(int argc, char **argv)
     {
         if (strcmp(namelist[i]->d_name, ".") != 0 && strcmp(namelist[i]->d_name, "..") != 0)
         {
-            search_element(base_dir, base_dir, opts, namelist[i], searched_name, &counter, &printed);
+            search_element(context->base_dir, context->base_dir, opts, namelist[i], searched_name, &counter, &printed);
         }
 
         free(namelist[i]);
     }
+
     if (!printed)
     {
-        if (!opts.base.recursive)
+        if (!opts->base.recursive)
         {
-            printf("Couldn't find '%s' on '%s' base directory", searched_name, base_dir);
+            printf("Couldn't find '%s' on '%s' base directory", searched_name, context->base_dir);
         }
         else
         {
-            printf("Couldn't find '%s' on base directory '%s' and in any other of its subdirectory", searched_name, base_dir);
+            printf("Couldn't find '%s' on base directory '%s' and in any other of its subdirectory", searched_name, context->base_dir);
         }        
     }
 
     free(namelist);
-    free(base_dir);
     free(searched_name);
+    free_command_context(context);
     return 0;
 }
 
 // Parses through CLI arguments for 'search' functionality
-static SearchOptions parse_search_opts(int argc, char **argv, int opt_start, bool *size_err)
+int parse_search_opts(int argc, char **argv, int opt_start, void *opts_out)
 {
-    SearchOptions opts = {0};
+    SearchOptions *opts = (SearchOptions*)opts_out;
+    opts->base.ignore_case = true;
 
-    // Set default values
-    opts.base.ignore_case = true;
+    int ret;
+    ret = parse_common_opts(argc, argv, opt_start, &opts->base);
+    if (ret != 0)
+    {
+        return ret;
+    }
+    ret = parse_filter_options(argc, argv, opt_start, &opts->filter);
+    if (ret != 0)
+    {
+        if (ret == PARSE_ERROR_INVALID_SIZE)
+        {
+            errno = EIO;
+            fprintf(stderr, "Invalid size: %s\n", strerror(errno));
+            return 9;
+        }
+        return ret;
+    }
 
     static struct option long_opts[] =
     {
         {"contains", no_argument, 0, 'c'},
-        {"extension", required_argument, 0, 'e'},
-        {"ignore-case", no_argument, 0, 'i'},
-        {"type", required_argument, 0, 't'},
-        {"recursive", no_argument, 0, 'R'},
-        {"max-size", required_argument, 0, 0},
-        {"min-size", required_argument, 0, 0},
-        
         {NULL, 0, NULL, 0}
     };
 
     int opt = 0;
     int long_index = 0;
-    char *short_opts = "ce:it:R";
+    char *short_opts = "c";
 
     // Defines starting index to search for arguments
     optind = opt_start;
@@ -141,45 +131,9 @@ static SearchOptions parse_search_opts(int argc, char **argv, int opt_start, boo
     {
         switch (opt)
         {
-            case 'R':
-            {
-                opts.base.recursive = true;
-                break;
-            }
-            case 'i':
-            {
-                opts.base.ignore_case = false;
-                break;
-            }
             case 'c':
             {
-                opts.contains = true;
-                break;
-            }
-            case 't':
-            {
-                opts.filter.type = optarg;
-                break;
-            }
-            case 'e':
-            {
-                opts.filter.extension = optarg;
-                break;
-            }
-            case 0:
-            {
-                if (strcmp(long_opts[long_index].name, "min-size") == 0)
-                {
-                    opts.filter.min_size = get_size(optarg);
-                }
-                else if (strcmp(long_opts[long_index].name, "max-size") == 0)
-                {
-                    opts.filter.max_size = get_size(optarg);
-                }
-                if (opts.filter.max_size == -1 || opts.filter.min_size == -1)
-                {
-                    *size_err = true;
-                }
+                opts->contains = true;
                 break;
             }
             case '?':
@@ -188,12 +142,13 @@ static SearchOptions parse_search_opts(int argc, char **argv, int opt_start, boo
             }
         }
     }
+    
+    return 0;
 
-    return opts;
 }
 
 // Searches for an element
-static void search_element(char *current_path, const char *base_dir, SearchOptions opts, const struct dirent *namelist, const char *searched, size_t *counter, bool *printed)
+static void search_element(char *current_path, const char *base_dir, SearchOptions *opts, const struct dirent *namelist, const char *searched, size_t *counter, bool *printed)
 {
     if (strcmp(namelist->d_name, ".") == 0 || strcmp(namelist->d_name, "..") == 0)
     {
@@ -213,7 +168,7 @@ static void search_element(char *current_path, const char *base_dir, SearchOptio
     }
 
     // Checks recursively for searched element
-    if (opts.base.recursive && S_ISDIR(st.st_mode))
+    if (opts->base.recursive && S_ISDIR(st.st_mode))
     {
         struct dirent **entry;
         int n = scandir(new_path, &entry, NULL, alphasort);
@@ -231,25 +186,25 @@ static void search_element(char *current_path, const char *base_dir, SearchOptio
     }
 
     // Checks for name equality
-    if (strcmp(namelist->d_name, "*") != 0 && !match_searched_name(namelist->d_name, searched, opts.contains, opts.base.ignore_case))
+    if (strcmp(namelist->d_name, "*") != 0 && !match_searched_name(namelist->d_name, searched, opts->contains, opts->base.ignore_case))
     {
         return;
     }
 
     // Checks for extension
-    if (opts.filter.extension && !match_searched_extension(opts.filter.extension, namelist->d_name))
+    if (opts->filter.extension && !match_searched_extension(opts->filter.extension, namelist->d_name))
     {
         return;
     }
 
     // Checks for element's type
-    if (opts.filter.type && !match_type(opts.filter.type, st.st_mode))
+    if (opts->filter.type && !match_type(opts->filter.type, st.st_mode))
     {
         return;
     }
 
     // Checks for size
-    if ((opts.filter.max_size || opts.filter.min_size) && !match_size(opts.filter.max_size, opts.filter.min_size, st.st_size))
+    if ((opts->filter.max_size || opts->filter.min_size) && !match_size(opts->filter.max_size, opts->filter.min_size, st.st_size))
     {
         return;
     }
