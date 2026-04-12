@@ -4,11 +4,9 @@
 ## New features
 - [ ] Implement `list` feature
 - [ ] `list` feature → also prints in horizontal direction
-- [ ] Implement `rename` feature
 - [ ] Implement `backup` feature
 - [-] Implement `help` feature
 - [ ] Implement `log` feature
-- [ ] Implement `duplicate` feature
 - [ ] Implement `restore` feature
 - [ ] Helper function to get full path from a file/directory
 - [ ] Add more fields in the `search` feature output
@@ -17,13 +15,10 @@
 ## Refactoring tasks
 - [ ] Change `validade_command` to use `for` loop instead of `bsearch()`
 - [ ] Fix `validate_args()` with new max/min commands allowed
-- [ ] Change all commands logic validation/parse to remove repetitive code (boilerplate)
-- [ ] Change content retriever (`struct dirent`) to remove boilerplate
-- [ ] Change element validation to remove boilerplate
 - [ ] Refactor flags checker (boilerplate in the beggining of each `CMD_element()` function)
 - [ ] Change type checker to use `d_type` as default and `struct stat` as fallback
 - [ ] Modular function to create and validate path
-
+- [ ] Change content retriever (`struct dirent`) to remove boilerplate
 
 ## Testing
 
@@ -58,3 +53,8 @@
 - [x] Change `snprintf()` to `check_path_name_size()` on all files
 - [x] Move `extension` flag from `GeneralOptions` to `FilterOptions` structure
 - [x] `list` feature → implement comparation functions for name and version, and get rid of `alphasort` and `versionsort`
+- [x] Change all commands logic validation/parse to remove repetitive code (boilerplate)
+- [x] Refactor `sort` flag logic to remove boilerplate
+- [x] Refactor parsers to segregate into 3 more parsers, one for each common structure
+- [x] Implement `rename` feature
+- [x] Improve `recursive` flag on `list` feature

@@ -8,6 +8,46 @@
 **Progress**
 
 
+## [2026-04-11]
+**Plans**
+- Implement `rename` feature
+- Remove boilerplates
+
+**Challenges**
+
+**Progress**
+- Concentrated all comparation functions used by `scandir()` into a new file (`utils_sort.c`)
+- Created 3 general parsers, one for each structure (`parse_common_opts`, `parse_filter_options` and `parse_action_options`). It removed boilerplates and kept each features's parser cleaner and focused on its own unique flags
+- Created new `generate_unique_name()` to create incremental file name
+- `rename` feature implemented, still with some repetitive code, specially with flags checker logic/functions
+
+
+## [2026-04-08]
+**Plans**
+- Fix bugs and memory leak
+- Remove boileplates
+
+**Challenges**
+- Find issues, erros, typos
+- Find the best way to remove boilerplates
+
+**Progress**
+- Some functions where still leaking memory (e.g. `get_all_extensions()`)
+- Improved usage of `snprintf()`
+- Improved construction of `prompt` on features where user's input was required (`-i|--interactive` flag) by using `asprintf()`
+- Created `CommandContext` structure and `setup_command()` function to handle command initialization. It elimated the first boilerplate on most features: 
+    - Check for `help` flag
+    - Define initial values
+    - Validate `base_dir`
+    - Parse CLI arguments → Grok (xAi) did help me with this, specilially refactoring the prototype of the function and casting it to a new value
+- The other boilerplate I thought that was in the program wasn't actually a boilerplate:
+    - `dirent` struct
+    - call action function
+    - free memory
+    - output message
+- The logic behind each one was the same, bust the structure and fucntions' signatures were all different, as well as the block of memory that should be freed and the output messages. Decided not to remove this "boilerplate" because it would just create complexity without any substantial gain. Instead, I just created helper functions to eliminate some repetitive functions
+
+
 ## [2026-04-05]
 **Plans**
 - Implement `delete` feature

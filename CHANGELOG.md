@@ -1,5 +1,29 @@
 # Changelog
 
+## [VERSION] - DATE
+### Added
+
+### Changed
+
+### Fixed
+
+### Removed
+
+
+## [0.6.0] - 2026-04-11
+### Added
+- Created `CommandContext` structure and `setup_command()` to remove initial boilerplate on most commands' initialization
+- Implemented `rename` feature
+
+### Changed
+- Changed parser functions by adding 3 general parsers (`parse_common_opts`, `parse_filter_options` and `parse_action_options`)
+
+### Fixed
+- Fixed recursive logic on `move` feature
+
+### Removed
+- Removed `type` flag from `rename` feature
+
 
 ## [0.5.1] - 2026-04-07
 ### Added
@@ -14,7 +38,6 @@
 - Changed path construction to use `check_path_name_size()`
 
 ### Fixed
-- Fixe memory leak on `get_all_extensions()`
 - Fixed typos, name collision and missing libraries on `utils.h`, `utils_filter.c` and `search_cmd.c`
 - Fixed typos, bugs and duplicated logic on `delete_element()` and `delete_directory()`
 - Fixed memory leak when using `get_all_extensions()`
