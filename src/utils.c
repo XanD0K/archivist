@@ -119,7 +119,7 @@ Extension *get_all_extensions(char *exts, size_t *ext_counter)
         // Sets extension to lowercase
         for (char *p = output_ext[*ext_counter].extension; *p; p++)
         {
-            *p = tolower((unsigned char)*p);
+            *p = (char)tolower((unsigned char)*p);
         }
 
         output_ext[*ext_counter].file_count = 0;
@@ -150,7 +150,7 @@ void free_extensions(Extension *ext, size_t ext_counter)
         return;
     }
 
-    for (int i = 0; i < ext_counter; i++)
+    for (size_t i = 0; i < ext_counter; i++)
     {
         free(ext[i].extension);
     }
@@ -169,20 +169,6 @@ bool check_help(int argc, char *argv)
             {
                 return true;
             }
-    }
-
-    return false;
-}
-
-// Checks for valid sort method
-bool check_sort(char *sort, const char **sorts, size_t len)
-{
-    for (size_t i = 0; i < len; i++)
-    {
-        if (strcasecmp(sort, sorts[i]) == 0)
-        {
-            return true;
-        }
     }
 
     return false;

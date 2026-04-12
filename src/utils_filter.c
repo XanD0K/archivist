@@ -1,7 +1,6 @@
 #define _GNU_SOURCE
 
 // Libraries
-#include <dirent.h>
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>

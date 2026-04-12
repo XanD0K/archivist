@@ -20,17 +20,17 @@ static void print_branch(struct dirent *namelist, char *current_path, const char
 static char *concatenates_prefix(char *prefix, char *sufix);
 
 // Displays directory's structure 
-int handle_tree(int argc, char **argv)
+int handle_tree(int argc, char **argv, int min_args)
 {
     // Checks for 'help' flag
-    if (check_help(argc, argv[2]))
+    if (check_help(argc, argv[min_args]))
     {
         print_tree_help();
         return 0;
     }
 
     // Gets valid base directory (default: .)
-    char *base_dir = get_valid_directory(argv[2]);
+    char *base_dir = get_valid_directory(argv[min_args]);
 
     // Gets all content from directory
     struct dirent **namelist;

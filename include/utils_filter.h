@@ -2,6 +2,7 @@
 #define UTILS_FILTER_H
 
 // Libraris
+#include <dirent.h>
 #include <stdbool.h>
 #include <stddef.h>  // size_t
 #include <sys/types.h>  // off_t
