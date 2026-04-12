@@ -18,8 +18,8 @@ typedef struct
 {
     char *contains;
     char *extension;
-    off_t min_size;
     off_t max_size;
+    off_t min_size;
     char *type;
 } FilterOptions;
 
