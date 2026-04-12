@@ -8,9 +8,11 @@
 
 // Headers
 #include "commands.h"
+#include "delete.h"
 #include "help.h"
 #include "list.h"
 #include "move.h"
+#include "rename.h"
 #include "report.h"
 #include "search_cmd.h"
 #include "utils.h"
@@ -47,6 +49,7 @@ int execute_command(int argc, char **argv)
     const CommandEntry cmd_table[] = 
     {
         {"list", handle_list, 2, 8},
+        {"delete", handle_delete, 2, 18},
         {"move", handle_move, 3, 20},
         {"report", handle_report, 2, 9},
         {"search", handle_search, 3, 11},
@@ -55,8 +58,6 @@ int execute_command(int argc, char **argv)
 
         /*
         {"backup", handle_backup, 4, 4},
-        {"delete", handle_delete, 3, 4},
-        {"duplicate", handle_duplicate, 3, 3},
         {"log", handle_log, 2, 2},
         {"rename", handle_rename, 3, 5},
         {"restore", handle_restore, 4, 5},
@@ -82,7 +83,7 @@ int execute_command(int argc, char **argv)
     }
     
     // Calls handler function
-    const int handler_result = cmd_table[index].handler(argc, argv);
+    const int handler_result = cmd_table[index].handler(argc, argv, cmd_table[index].min_args);
     return handler_result;
 }
 
@@ -116,7 +117,7 @@ static bool validate_args(int argc, ptrdiff_t index, const CommandEntry cmd_tabl
             // Backup
             case 0:
             {
-                fprintf(stderr, "Usage: ./archivist %s DIRECTORY [FLAGS]\n", cmd);
+                fprintf(stderr, "Usage: ./archivist %s [DIRECTORY] [FLAGS]\n", cmd);
                 break;
             }
             // Delete / Search
@@ -144,7 +145,7 @@ static bool validate_args(int argc, ptrdiff_t index, const CommandEntry cmd_tabl
             // List
             case 4:
             {
-                fprintf(stderr, "Usage: ./archivist %s DIRECTORY [order] [revers] [recursive] [dir-first] [case-insensitive]\n"
+                fprintf(stderr, "Usage: ./archivist %s [DIRECTORY] [order] [revers] [recursive] [dir-first] [case-insensitive]\n"
                                 "See all flags available with: ./archivist %s -h|--help|help\n", cmd, cmd);
                 break;
             }
@@ -154,18 +155,18 @@ static bool validate_args(int argc, ptrdiff_t index, const CommandEntry cmd_tabl
             {
                 if (strcasecmp(cmd, "move") == 0)
                 {
-                    fprintf(stderr, "Usage: ./archivist %s SRC_DIRECTORY DEST_DIRECTORY [name|extension|type|size]\n", cmd);
+                    fprintf(stderr, "Usage: ./archivist %s [SRC_DIRECTORY] DEST_DIRECTORY [name|extension|type|size]\n", cmd);
                 }
                 else
                 {
-                    fprintf(stderr, "Usage: ./archivist %s SRC_DIRECTORY DEST_DIRECTORY [version]\n", cmd);
+                    fprintf(stderr, "Usage: ./archivist %s [SRC_DIRECTORY] DEST_DIRECTORY [version]\n", cmd);
                 }
                 break;
             }
             // Rename
             case 7:
             {
-                fprintf(stderr, "Usage: ./archivist %s DIRECTORY [filename] [place]\n", cmd);
+                fprintf(stderr, "Usage: ./archivist %s [DIRECTORY] [filename] [place]\n", cmd);
                 break;
             }
             // Fallback
@@ -189,4 +190,78 @@ static bool check_args_count(int argc, ptrdiff_t index, const CommandEntry cmd_t
     int max = cmd_table[index].max_args;
 
     return (argc >= min && argc <= max);
+}
+
+CommandContext *setup_command(int argc, char **argv, int min_args, PrintHelp print_help,
+                              ParseOptions parser, size_t opts_size)
+{
+    CommandContext *context = calloc(1, sizeof(CommandContext));
+    if (!context)
+    {
+        errno = ENOMEM;
+        fprintf(stderr, "Error on memory allocation: %s\n", strerror(errno));
+        return NULL;
+    }
+
+    // Checks for 'help' flag
+    if (check_help(argc, argv[2]))
+    {
+        print_help();
+        context->error_code = -1;
+        return context;
+    }
+
+    // Defines starting values
+    const char *dir_path = NULL;
+    context->opt_start = min_args;
+
+    if (argc >= min_args + 1 && argv[min_args][0] != '-')
+    {
+        dir_path = argv[min_args];
+        context->opt_start = min_args + 1;
+    }
+
+    context->base_dir = get_valid_directory(dir_path);
+    if (!context->base_dir)
+    {
+        context->error_code = 4;
+        return context;
+    }
+
+    context->opts = calloc(1, opts_size);
+    if (!context->opts)
+    {
+        errno = ENOMEM;
+        fprintf(stderr, "Error on memory allocation: %s\n", strerror(errno));
+        context->error_code = 10;
+        return context;
+    }
+    int parse_err = parser(argc, argv, context->opt_start, context->opts);
+    if (parse_err != 0)
+    {
+        context->error_code = parse_err;
+        return context;
+    }
+
+    context->error_code = 0;
+    return context;
+}
+
+// Free command setup's structure
+void free_command_context(CommandContext *context)
+{
+    if (!context)
+    {
+        return;
+    }
+
+    if (context->base_dir)
+    {
+        free(context->base_dir);
+    }
+    if (context->opts)
+    {
+        free(context->opts);
+    }
+    free(context);
 }
