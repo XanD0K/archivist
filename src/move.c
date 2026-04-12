@@ -12,7 +12,9 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-// Hedaers
+// Headers
+#include "cli_parse_common.h"
+#include "commands.h"
 #include "help.h"
 #include "move.h"
 #include "utils.h"
@@ -20,85 +22,61 @@
 
 // Prototypes
 static char *get_valid_destination(const char *path);
-static MoveOptions parse_move_opts(int argc, char **argv, int opt_start, bool *size_err);
-static void move_element(char *current_path, char *dst_dir, MoveOptions opts,
+static void move_element(char *current_path, char *dst_dir, MoveOptions *opts,
                          struct dirent *namelist, Extension *ext, size_t ext_counter,
                          size_t *moved_files, size_t *created_directories);
 static char *match_existed_file(char *dst_dir, char *new_dst_dir, char *name, bool skip, bool force);
 
 // Setup logic for 'move' feature
-int handle_move(int argc, char **argv)
+int handle_move(int argc, char **argv, int min_args)
 {
-    // Checks for 'help' flag
-    if (check_help(argc, argv[2]))
+    CommandContext *context = setup_command(argc, argv, min_args, print_move_help,
+                                            parse_move_opts, sizeof(MoveOptions));
+    if (!context)
     {
-        print_move_help();
-        return 0;
+        return 10;
+    }
+    if (context->error_code != 0)
+    {
+        free_command_context(context);
+        return (context->error_code == -1) ? 0 : context->error_code;
     }
 
-    // Defines starting values
-    const char *dir_path_src = NULL;
-    const char *dir_path_dst = argv[2];
-    int opt_start = 3;
-    if (argc >= 4 && argv[3][0] != '-')
-    {
-        dir_path_src = argv[2];
-        dir_path_dst = argv[3];
-        opt_start = 4;
-    }
+    MoveOptions *opts = (MoveOptions*)context->opts;
 
-    // Validates base directory
-    char *base_dir = get_valid_directory(dir_path_src);
-    if (!base_dir)
-    {
-        return 4;
-    }
-
+    const char *dir_path_dst = (argc >= 4 && argv[3][0] != '-') ? argv[2] : argv[3];
     // Checks/Creates destination directory
     char *dst_dir = get_valid_destination(dir_path_dst);
     if (!dst_dir)
     {
-        free(base_dir);
         return 4;
-    }
-
-    // Parses CLI arguments
-    bool size_err = false;
-    MoveOptions opts = parse_move_opts(argc, argv, opt_start, &size_err);
-    if (size_err)
-    {
-        free(base_dir);
-        free(dst_dir);
-        errno = EIO;
-        fprintf(stderr, "Invalid size: %s", strerror(errno));
-        return 9;
     }
 
     // Retrieves user's selected extensions (-e|--extension flag)
     Extension *ext = NULL;
     size_t ext_counter = 0;
-    if (opts.filter.extension && opts.filter.extension[0] != '\0')
+    if (opts->filter.extension && opts->filter.extension[0] != '\0')
     {
-        ext = get_all_extensions(opts.filter.extension, &ext_counter);
+        ext = get_all_extensions(opts->filter.extension, &ext_counter);
         if (!ext)
         {
-            free(base_dir);
             free(dst_dir);
             errno = ENOMEM;
             fprintf(stderr, "Error on memory allocation: %s\n", strerror(errno));
+            free_command_context(context);
             return 10;
         }
     }
     
     // Retrieves directory's content
     struct dirent **namelist;
-    int n = scandir(base_dir, &namelist, NULL, alphasort);
+    int n = scandir(context->base_dir, &namelist, NULL, alphasort);
     if (n == -1)
     {
-        free(base_dir);
         free(dst_dir);
         free_extensions(ext, ext_counter);
         fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
+        free_command_context(context);
         return 6;
     }
 
@@ -108,19 +86,19 @@ int handle_move(int argc, char **argv)
     {
         if (strcmp(namelist[i]->d_name, ".") != 0 && strcmp(namelist[i]->d_name, "..") !=0)
         {
-            move_element(base_dir, dst_dir, opts, namelist[i], ext,
+            move_element(context->base_dir, dst_dir, opts, namelist[i], ext,
                          ext_counter, &moved_files, &created_directories);
         }
 
         free(namelist[i]);
     }
 
-    free(base_dir);
     free(dst_dir);
     free(namelist);
     free_extensions(ext, ext_counter);
 
-    if (opts.action.dry_run)
+    // Output Message
+    if (opts->action.dry_run)
     {
         printf("[DRY-RUN] Files that would be moved: %zu\n"
                "[DRY-RUN] Directories that would be created: %zu\n",
@@ -132,6 +110,7 @@ int handle_move(int argc, char **argv)
                "Created directories: %zu\n", moved_files, created_directories);
     }
 
+    free_command_context(context);
     return 0;
 }
 
@@ -202,30 +181,43 @@ static char *get_valid_destination(const char *path)
 }
 
 // Parses through CLI arguments for 'move' functionality
-static MoveOptions parse_move_opts(int argc, char **argv, int opt_start, bool *size_err)
+int parse_move_opts(int argc, char **argv, int opt_start, void *opts_out)
 {
-    MoveOptions opts = {0};
-    opts.base.recursive = true;
+    MoveOptions *opts = (MoveOptions*)opts_out;
+
+    int ret;
+    ret = parse_common_opts(argc, argv, opt_start, &opts->base);
+    if (ret != 0)
+    {
+        return ret;
+    }
+    ret = parse_filter_options(argc, argv, opt_start, &opts->filter);
+    if (ret != 0)
+    {
+        if (ret == PARSE_ERROR_INVALID_SIZE)
+        {
+            errno = EIO;
+            fprintf(stderr, "Invalid size: %s\n", strerror(errno));
+            return 9;
+        }
+        return ret;
+    }
+    ret = parse_action_options(argc, argv, opt_start, &opts->action);
+    if (ret != 0)
+    {
+        return ret;
+    }   
 
     static struct option long_opts[] =
     {
-        {"contains", no_argument, 0, 'c'},
-        {"dry-run", no_argument, 0, 'd'},
-        {"extension", required_argument, 0, 'e'},
         {"force", no_argument, 0, 'f'},
-        {"interactive", no_argument, 0, 'i'},
         {"skip", no_argument, 0, 's'},
-        {"type", required_argument, 0, 't'},
-        {"verbose", no_argument, 0, 'v'},
-        {"recursive", no_argument, 0, 'R'},
-        {"max-size", required_argument, 0, 0},
-        {"min-size", required_argument, 0, 0},
         {NULL, 0, NULL, 0}
     };
 
     int opt = 0;
     int long_index = 0;
-    char *short_opts = "cde:fist:vR";
+    char *short_opts = "fs";
 
     // Defines starting index to search for arguments
     optind = opt_start;
@@ -234,67 +226,16 @@ static MoveOptions parse_move_opts(int argc, char **argv, int opt_start, bool *s
     {
         switch (opt)
         {
-            case 'c':
-            {
-                opts.filter.contains = optarg;
-                break;
-            }
-            case 'd':
-            {
-                opts.action.dry_run = true;
-                break;
-            }
-            case 'e':
-            {
-                opts.filter.extension = optarg;
-                break;
-            }
             case 'f':
             {
-                opts.force = true;
-                opts.skip = false;
-                break;
-            }
-            case 'i':
-            {
-                opts.action.interactive = true;
+                opts->force = true;
+                opts->skip = false;
                 break;
             }
             case 's':
             {
-                opts.force = false;
-                opts.skip = true;
-                break;
-            }
-            case 't':
-            {
-                opts.filter.type = optarg;
-                break;
-            }
-            case 'v':
-            {
-                opts.action.verbose = true;
-                break;
-            }
-            case 'R':
-            {
-                opts.base.recursive = false;
-                break;
-            }
-            case 0:
-            {
-                if (strcmp(long_opts[long_index].name, "max-size") == 0)
-                {
-                    opts.filter.max_size = get_size(optarg);
-                }
-                else if (strcmp(long_opts[long_index].name, "min-size") == 0)
-                {
-                    opts.filter.min_size = get_size(optarg);
-                }
-                if (opts.filter.max_size == -1 || opts.filter.min_size == -1)
-                {
-                    *size_err = true;
-                }
+                opts->force = false;
+                opts->skip = true;
                 break;
             }
             case '?':
@@ -303,12 +244,12 @@ static MoveOptions parse_move_opts(int argc, char **argv, int opt_start, bool *s
             }
         }
     }
-
-    return opts;
+    
+    return 0;
 }
 
 // Move files from one directory to another
-static void move_element(char *current_path, char *dst_dir, MoveOptions opts,
+static void move_element(char *current_path, char *dst_dir, MoveOptions *opts,
                          struct dirent *namelist, Extension *ext, size_t ext_counter,
                          size_t *moved_files, size_t *created_directories)
 {
@@ -317,20 +258,14 @@ static void move_element(char *current_path, char *dst_dir, MoveOptions opts,
         return;
     }
 
-    // Checks for name equality (contains)
-    if ((opts.filter.contains != NULL && opts.filter.contains[0] != '\0') &&
-        !match_name(opts.filter.contains, namelist->d_name))
-    {
-        return;
-    }
-
-    struct stat st;
     // Creates path to origin
     char new_path[PATH_MAX];
     if (check_path_name_size(new_path, sizeof(new_path), current_path, namelist->d_name) == -1)
     {
         return;
     }
+    
+    struct stat st;
     if (stat(new_path, &st) != 0)
     {
         return;
@@ -344,63 +279,127 @@ static void move_element(char *current_path, char *dst_dir, MoveOptions opts,
     }
 
     // Recursively calls function on subdirectories
-    if (opts.base.recursive && S_ISDIR(st.st_mode))
+    if (S_ISDIR(st.st_mode))
     {
-        // Gets user's confirmation before creating new directory
-        if (opts.action.interactive)
+        if (is_directory_type(opts->filter.type))
         {
-            char *prompt = NULL;
-            if (asprintf(&prompt, "Creates directory %s", new_dst_dir) == -1)
+            bool can_move_whole = true;
+
+            // Checks for name equality (contains)
+            if (opts->filter.contains != NULL && opts->filter.contains[0] != '\0')
             {
-                fprintf(stderr, "Error on asprintf(): %s\n", strerror(errno));
-                free(prompt);
-                return;
-            }            
-            if (!get_answer(prompt))
-            {
-                return;
-                free(prompt);
+                if (!match_name(opts->filter.contains, namelist->d_name))
+                {
+                    can_move_whole = false;
+                }
             }
 
-            free(prompt);
-        }
-
-        if (opts.action.dry_run)
-        {
-            printf("[DRY-RUN] would create directory %s\n", new_dst_dir);
-        }
-        else
-        {
-            // Creates new subdirectory on destination
-            if (mkdir(new_dst_dir, 0755) != 0 && errno != EEXIST)
+            if ((opts->filter.max_size || opts->filter.min_size) && can_move_whole)
             {
+                off_t dir_size = 0;
+                if (!match_directory_size(new_path, opts->filter.max_size, opts->filter.min_size, &dir_size))
+                {
+                    can_move_whole = false;
+                }
+            }
+
+            if (can_move_whole)
+            {                
+                // Gets user's confirmation before creating new directory
+                if (opts->action.interactive)
+                {
+                    char *prompt = NULL;
+                    if (asprintf(&prompt, "Moves directory %s", new_dst_dir) == -1)
+                    {
+                        fprintf(stderr, "Error on asprintf(): %s\n", strerror(errno));
+                        free(prompt);
+                        return;
+                    }            
+                    if (!get_answer(prompt))
+                    {
+                        free(prompt);
+                        return;
+                    }
+
+                    free(prompt);
+                }
+                if (opts->action.dry_run)
+                {
+                    printf("[DRY-RUN] would move directory %s\n", new_dst_dir);
+                }
+                else
+                {
+                    // Creates new subdirectory on destination
+                    if (rename(new_path, new_dst_dir) == 0)
+                    {
+                        if (opts->action.verbose)
+                        {
+                            printf("Directory %s moved at %s\n", namelist->d_name, dst_dir);
+                        }
+                    }
+                }
+
                 return;
             }
         }
 
-        (*created_directories)++;
-
-        if (opts.action.verbose)
+        if (opts->base.recursive)
         {
-            printf("Directory %s created at %s\n", namelist->d_name, dst_dir);
+            // Gets user's confirmation before creating new directory
+            if (opts->action.interactive)
+            {
+                char *prompt = NULL;
+                if (asprintf(&prompt, "Moves directory %s", new_dst_dir) == -1)
+                {
+                    fprintf(stderr, "Error on asprintf(): %s\n", strerror(errno));
+                    free(prompt);
+                    return;
+                }            
+                if (!get_answer(prompt))
+                {
+                    free(prompt);
+                    return;
+                }
+
+                free(prompt);
+            }
+            if (opts->action.dry_run)
+            {
+                printf("[DRY-RUN] would move directory %s\n", new_dst_dir);
+            }
+            else
+            {
+                if (mkdir(new_dst_dir, 0755) != 0 && errno != EEXIST)
+                {
+                    return;
+                }
+            }
+
+            (*created_directories)++;
+
+            if (opts->action.verbose)
+            {
+                printf("Directory moved: %s\n", new_dst_dir);
+            }
+
+            // Retrieves all content from base directory
+            struct dirent **entry;
+            int n = scandir(new_path, &entry, NULL, alphasort);
+            if (n == -1)
+            {
+                return;
+            }
+
+            for (int i = 0; i < n; i++)
+            {
+                move_element(new_path, new_dst_dir, opts, entry[i], ext,
+                            ext_counter, moved_files, created_directories);
+                free(entry[i]);
+            }
+
+            free(entry);
         }
 
-        // Retrieves all content from base directory
-        struct dirent **entry;
-        int n = scandir(new_path, &entry, NULL, alphasort);
-        if (n == -1)
-        {
-            return;
-        }
-
-        for (int i = 0; i < n; i++)
-        {
-            move_element(new_path, new_dst_dir, opts, entry[i], ext,
-                         ext_counter, moved_files, created_directories);
-            free(entry[i]);
-        }
-
-        free(entry);
         return;
     }
 
@@ -410,18 +409,26 @@ static void move_element(char *current_path, char *dst_dir, MoveOptions opts,
     }
 
     // Checks for element's type
-    if (opts.filter.type && !match_type(opts.filter.type, st.st_mode))
+    if (opts->filter.type && !match_type(opts->filter.type, st.st_mode))
     {
         return;
     }
 
+    // Checks for name equality (contains)
+    if (opts->filter.contains != NULL && opts->filter.contains[0] != '\0')
+    {
+        if (!match_name(opts->filter.contains, namelist->d_name))
+        {
+            return;
+        }
+    }
     // Checks for already existed file (force, skip)
     bool existed = access(new_dst_dir, F_OK) == 0;
     
     char *final_dst = NULL;
     if (existed)
     {
-        final_dst = match_existed_file(dst_dir, new_dst_dir, namelist->d_name, opts.skip, opts.force);
+        final_dst = match_existed_file(dst_dir, new_dst_dir, namelist->d_name, opts->skip, opts->force);
         if (!final_dst)
         {
             return;
@@ -440,15 +447,15 @@ static void move_element(char *current_path, char *dst_dir, MoveOptions opts,
     }
 
     // Checks for size
-    if ((opts.filter.max_size || opts.filter.min_size) &&
-        !match_size(opts.filter.max_size, opts.filter.min_size, st.st_size))
+    if ((opts->filter.max_size || opts->filter.min_size) &&
+        !match_size(opts->filter.max_size, opts->filter.min_size, st.st_size))
     {
         free(final_dst);
         return;
     }
 
     // Gets user's confirmation before moving file
-    if (opts.action.interactive)
+    if (opts->action.interactive)
     {
         char *prompt = NULL;
         if (asprintf(&prompt, "Move file '%s' from %s to %s?", namelist->d_name, current_path, final_dst) == -1)
@@ -466,23 +473,24 @@ static void move_element(char *current_path, char *dst_dir, MoveOptions opts,
         free(prompt);
     }
 
-    if (opts.action.dry_run)
+    if (opts->action.dry_run)
     {
         printf("[DRY-RUN] would move file '%s' from '%s' to '%s'\n", namelist->d_name, current_path, dst_dir);
     }
     else
     {
         // Moves file from source to destination
-        rename(new_path, final_dst);
+        if (rename(new_path, final_dst) == 0)
+        {
+            // Prints action in terminal
+            if (opts->action.verbose)
+            {
+                printf("File '%s' moved from '%s' to '%s'\n", namelist->d_name, current_path, dst_dir);
+            }
+        }
     }
 
     (*moved_files)++;
-
-    // Prints action in terminal
-    if (opts.action.verbose)
-    {
-        printf("File '%s' moved from '%s' to '%s'\n", namelist->d_name, current_path, dst_dir);
-    }
 
     free(final_dst);
 }
@@ -518,13 +526,13 @@ static char *match_existed_file(char *dst_dir, char *new_dst_dir, char *name, bo
     }
 
     char new_name[PATH_MAX];
+    char final_path[PATH_MAX];
     size_t counter = 1;
 
     while (1)
     {
         snprintf(new_name, sizeof(new_name), "%s_%zu%s", base, counter, valid_dot);
 
-        char final_path[PATH_MAX];
         if (check_path_name_size(final_path, sizeof(final_path), dst_dir, new_name) == -1)
         {
             return NULL;

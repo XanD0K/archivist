@@ -18,6 +18,7 @@ typedef struct
 } MoveOptions;
 
 // Prototype
-int handle_move(int argc, char **argv);
+int handle_move(int argc, char **argv, int min_args);
+int parse_move_opts(int argc, char **argv, int opt_start, void *opts_out);
 
 #endif
