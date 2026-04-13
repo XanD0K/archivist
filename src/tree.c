@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 
 // Header
+#include "error_code.h"
 #include "help.h"
 #include "utils.h"
 
@@ -20,13 +21,13 @@ static void print_branch(struct dirent *namelist, char *current_path, const char
 static char *concatenates_prefix(char *prefix, char *sufix);
 
 // Displays directory's structure 
-int handle_tree(int argc, char **argv, int min_args)
+ErrorCode handle_tree(int argc, char **argv, int min_args)
 {
     // Checks for 'help' flag
     if (check_help(argc, argv[min_args]))
     {
         print_tree_help();
-        return 0;
+        return EC_HELP_FLAG;
     }
 
     // Gets valid base directory (default: .)
@@ -39,13 +40,13 @@ int handle_tree(int argc, char **argv, int min_args)
     {
         free(base_dir);
         fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
-        return 6;
+        return EC_SCANDIR_ERROR;
     }
     
     print_tree(namelist, base_dir, n);
 
     free(base_dir);    
-    return 0;
+    return EC_SUCCESS;
 }
 
 // Prints root and defines starting point for printing branches

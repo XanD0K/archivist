@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <getopt.h>
 #include <limits.h>
+#include <stdint.h>  // uint32_t
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,7 +14,7 @@
 #include <unistd.h>
 
 // Headers
-#include "cli_parse_common.h"
+#include "cli_parse.h"
 #include "commands.h"
 #include "help.h"
 #include "report.h"
@@ -37,18 +38,18 @@ static void print_report_output(Extension *ext, size_t ext_counter, bool human_r
 static void clear_new_elements(Extension **ext, size_t old_capacity, size_t new_capacity);
 
 // Creates a report about the content of a given directory
-int handle_report(int argc, char **argv, int min_args)
+ErrorCode handle_report(int argc, char **argv, int min_args)
 {
     CommandContext *context = setup_command(argc, argv, min_args, print_report_help,
                                             parse_report_opts, sizeof(ReportOptions));
     if (!context)
     {
-        return 10;
+        return EC_MEMORY_ALLOCATION;
     }
-    if (context->error_code != 0)
+    if (context->error_code != EC_SUCCESS)
     {
         free_command_context(context);
-        return (context->error_code == -1) ? 0 : context->error_code;
+        return (context->error_code == EC_HELP_FLAG) ? EC_SUCCESS : context->error_code;
     }
 
     // Parses CLI arguments
@@ -71,7 +72,7 @@ int handle_report(int argc, char **argv, int min_args)
                             "Usage: ./archivist report [DIRECTORY] [FLAGS]\n",
                             strerror(errno));
             free_command_context(context);
-            return 5;
+            return EC_INVALID_SORTER;
         }
 
         sorter = get_sort_func(opts->base.sort);
@@ -84,7 +85,7 @@ int handle_report(int argc, char **argv, int min_args)
     {
         fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
         free_command_context(context);
-        return 6;
+        return EC_SCANDIR_ERROR;
     }
 
     // Dynamic Array that holds every extension on directory
@@ -97,7 +98,7 @@ int handle_report(int argc, char **argv, int min_args)
         fprintf(stderr, "Error on memory allocation: %s\n", strerror(errno));
         free_command_context(context);
         free(namelist);
-        return 10;
+        return EC_MEMORY_ALLOCATION;
     }
 
     // Keeps track of quantity and size of all files
@@ -117,7 +118,7 @@ int handle_report(int argc, char **argv, int min_args)
                 free_command_context(context);
                 free(namelist);
                 free_extensions(ext, ext_counter);
-                return 10;
+                return EC_MEMORY_ALLOCATION;
             }
         }
 
@@ -135,7 +136,7 @@ int handle_report(int argc, char **argv, int min_args)
         free(namelist);
         free_extensions(ext, ext_counter);
         free_command_context(context);
-        return 10;
+        return EC_MEMORY_ALLOCATION;
     }
 
     // Populates user's array with data collected from the directory
@@ -166,27 +167,32 @@ int handle_report(int argc, char **argv, int min_args)
     }
     free(namelist);
     free_command_context(context);
-    return 0;
+    return EC_SUCCESS;
 }
 
 // Parses through CLI arguments for 'report' functionality
-int parse_report_opts(int argc, char **argv, int opt_start, void *opts_out)
+ErrorCode parse_report_opts(int argc, char **argv, int opt_start, void *opts_out)
 {
     ReportOptions *opts = (ReportOptions*)opts_out;
 
-    int ret;
-    ret = parse_common_opts(argc, argv, opt_start, &opts->base);
-    if (ret != 0)
+    uint32_t supported_flags = COMMON_HUMAN_READABLE |
+                               COMMON_RECURSIVE |
+                               COMMON_SORT |
+                               FILTER_EXTENSION;
+
+    ErrorCode ret;
+    ret = parse_common_opts(argc, argv, opt_start, &opts->base, supported_flags);
+    if (ret != EC_SUCCESS)
     {
         return ret;
     }
-    ret = parse_filter_options(argc, argv, opt_start, &opts->filter);
-    if (ret != 0)
+    ret = parse_filter_options(argc, argv, opt_start, &opts->filter, supported_flags);
+    if (ret != EC_SUCCESS)
     {
         return ret;
     }
 
-    return 0;
+    return EC_SUCCESS;
 }
 
 // Checks for valid sort method

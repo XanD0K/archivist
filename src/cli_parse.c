@@ -2,14 +2,15 @@
 #include <getopt.h>
 #include <stdbool.h>
 #include <stddef.h>  // NULL
+#include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 
 // Headers
-#include "cli_parse_common.h"
+#include "cli_parse.h"
 #include "utils.h"
 
-int parse_common_opts(int argc, char **argv, int opt_start, CommonOptions *opts)
+ErrorCode parse_common_opts(int argc, char **argv, int opt_start, CommonOptions *opts, uint32_t supported_flags)
 {
     static struct option long_opts[] = 
     {
@@ -31,35 +32,56 @@ int parse_common_opts(int argc, char **argv, int opt_start, CommonOptions *opts)
         {
             case 'h':
             {
+                if (!(supported_flags & COMMON_HUMAN_READABLE))
+                {
+                    goto unsupported;
+                }
                 opts->human_readable = true;
                 break;
             }
             case 'i':
             {
-                opts->ignore_case = false;
+                if (!(supported_flags & COMMON_IGNORE_CASE ))
+                {
+                    goto unsupported;
+                }
+                opts->ignore_case = true;
                 break;
             }
             case 's':
             {
+                if (!(supported_flags & COMMON_SORT))
+                {
+                    goto unsupported;
+                }
                 opts->sort = optarg;
                 break;
             }
             case 'R':
             {
+                if (!(supported_flags & COMMON_RECURSIVE))
+                {
+                    goto unsupported;
+                }
                 opts->recursive = true;
                 break;
             }
             case '?':
             {
-                return 1;
+                fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
+                return EC_PARSE_ERROR;
             }
         }
     }
 
-    return 0;
+    return EC_SUCCESS;
+
+unsupported:
+    fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
+    return EC_PARSE_ERROR;
 }
 
-int parse_filter_options(int argc, char **argv, int opt_start, FilterOptions *opts)
+ErrorCode parse_filter_options(int argc, char **argv, int opt_start, FilterOptions *opts, uint32_t supported_flags)
 {
     static struct option long_opts[] = 
     {
@@ -82,16 +104,28 @@ int parse_filter_options(int argc, char **argv, int opt_start, FilterOptions *op
         {
             case 'c':
             {
+                if (!(supported_flags & FILTER_CONTAINS))
+                {
+                    goto unsupported;
+                }
                 opts->contains = optarg;
                 break;
             }
             case 'e':
             {
+                if (!(supported_flags & FILTER_EXTENSION))
+                {
+                    goto unsupported;
+                }
                 opts->extension = optarg;
                 break;
             }
             case 't':
             {
+                if (!(supported_flags & FILTER_TYPE))
+                {
+                    goto unsupported;
+                }
                 opts->type = optarg;
                 break;
             }
@@ -99,30 +133,44 @@ int parse_filter_options(int argc, char **argv, int opt_start, FilterOptions *op
             {
                 if (strcmp(long_opts[long_index].name, "max-size") == 0)
                 {
+                    if (!(supported_flags & FILTER_MAX_SIZE))
+                    {
+                        goto unsupported;
+                    }
                     opts->max_size = get_size(optarg);
                 }
                 else if (strcmp(long_opts[long_index].name, "min-size") == 0)
                 {
+                    if (!(supported_flags & FILTER_MIN_SIZE))
+                    {
+                        goto unsupported;
+                    }
+                    opts->max_size = get_size(optarg);
                     opts->min_size = get_size(optarg);
                 }
                 break;
             }
             case '?':
             {
-                return 1;
+                fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
+                return EC_PARSE_ERROR;
             }
         }
     }
 
     if (opts->max_size == -1 || opts->min_size == -1)
     {
-        return PARSE_ERROR_INVALID_SIZE;
+        return EC_PARSE_ERROR_SIZE;
     }
 
-    return 0;
+    return EC_SUCCESS;
+
+unsupported:
+    fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
+    return EC_PARSE_ERROR;
 }
 
-int parse_action_options(int argc, char **argv, int opt_start, ActionOptions *opts)
+ErrorCode parse_action_options(int argc, char **argv, int opt_start, ActionOptions *opts, uint32_t supported_flags)
 {
     static struct option long_opts[] = 
     {
@@ -143,30 +191,42 @@ int parse_action_options(int argc, char **argv, int opt_start, ActionOptions *op
         {
             case 'd':
             {
+                if (!(supported_flags & ACTION_DRY_RUN))
+                {
+                    goto unsupported;
+                }
                 opts->dry_run = true;
                 break;
             }
             case 'i':
             {
+                if (!(supported_flags & ACTION_INTERACTIVE))
+                {
+                    goto unsupported;
+                }
                 opts->interactive = true;
                 break;
             }
             case 'v':
             {
+                if (!(supported_flags & ACTION_VERBOSE))
+                {
+                    goto unsupported;
+                }
                 opts->verbose = true;
                 break;
             }
-            case 0:
-            {
-                break;
-            }
-
             case '?':
             {
-                return 1;
+                fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
+                return EC_PARSE_ERROR;
             }
         }
     }
 
-    return 0;
+    return EC_SUCCESS;
+
+unsupported:
+    fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
+    return EC_PARSE_ERROR;
 }

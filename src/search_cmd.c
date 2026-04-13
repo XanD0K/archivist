@@ -6,6 +6,7 @@
 #include <errno.h>
 #include <getopt.h>
 #include <limits.h>
+#include <stdint.h>  // uint32_t
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,7 +14,7 @@
 #include <unistd.h>
 
 // Headers
-#include "cli_parse_common.h"
+#include "cli_parse.h"
 #include "commands.h"
 #include "help.h"
 #include "search_cmd.h"
@@ -21,23 +22,25 @@
 #include "utils_filter.h"
 
 // Prototypes
-static void search_element(char *current_path, const char *base_dir, SearchOptions *opts, const struct dirent *namelist, const char *searched, size_t *counter, bool *printed);
+static void search_element(char *current_path, const char *base_dir, SearchOptions *opts,
+                           const struct dirent *namelist, const char *searched,
+                           size_t *counter, bool *printed);
 static bool match_searched_name(const char *current_name, const char *searched, bool contains, bool ignore_case);
 static bool match_searched_extension(const char *current_name, const char *ext);
 
 // Searches for a specific file/directory
-int handle_search(int argc, char **argv, int min_args)
+ErrorCode handle_search(int argc, char **argv, int min_args)
 {
     CommandContext *context = setup_command(argc, argv, min_args, print_search_help,
                                             parse_search_opts, sizeof(SearchOptions));
     if (!context)
     {
-        return 10;
+        return EC_MEMORY_ALLOCATION;
     }
-    if (context->error_code != 0)
+    if (context->error_code != EC_SUCCESS)
     {
         free_command_context(context);
-        return (context->error_code == -1) ? 0 : context->error_code;
+        return (context->error_code == EC_HELP_FLAG) ? EC_SUCCESS : context->error_code;
     }
 
     SearchOptions *opts = (SearchOptions*)context->opts;
@@ -47,17 +50,16 @@ int handle_search(int argc, char **argv, int min_args)
     {
         fprintf(stderr, "Error on strdup(): %s\n", strerror(errno));
         free_command_context(context);
-        return 8;
+        return EC_INVALID_SEARCHED_NAME;
     }
 
     struct dirent **namelist;
     int n = scandir(context->base_dir, &namelist, NULL, alphasort);
-
     if (n == -1)
     {
         fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
         free_command_context(context);
-        return 6;
+        return EC_SCANDIR_ERROR;
     }
 
     size_t counter = 0;
@@ -87,29 +89,34 @@ int handle_search(int argc, char **argv, int min_args)
     free(namelist);
     free(searched_name);
     free_command_context(context);
-    return 0;
+    return EC_SUCCESS;
 }
 
 // Parses through CLI arguments for 'search' functionality
-int parse_search_opts(int argc, char **argv, int opt_start, void *opts_out)
+ErrorCode parse_search_opts(int argc, char **argv, int opt_start, void *opts_out)
 {
     SearchOptions *opts = (SearchOptions*)opts_out;
-    opts->base.ignore_case = true;
 
-    int ret;
-    ret = parse_common_opts(argc, argv, opt_start, &opts->base);
-    if (ret != 0)
+    uint32_t supported_flags = COMMON_IGNORE_CASE |
+                               COMMON_RECURSIVE |
+                               FILTER_EXTENSION |
+                               FILTER_MAX_SIZE |
+                               FILTER_MIN_SIZE |
+                               FILTER_TYPE;
+
+    ErrorCode ret;
+    ret = parse_common_opts(argc, argv, opt_start, &opts->base, supported_flags);
+    if (ret != EC_SUCCESS)
     {
         return ret;
     }
-    ret = parse_filter_options(argc, argv, opt_start, &opts->filter);
-    if (ret != 0)
+    ret = parse_filter_options(argc, argv, opt_start, &opts->filter, supported_flags);
+    if (ret != EC_SUCCESS)
     {
-        if (ret == PARSE_ERROR_INVALID_SIZE)
+        if (ret == EC_PARSE_ERROR_SIZE)
         {
             errno = EIO;
             fprintf(stderr, "Invalid size: %s\n", strerror(errno));
-            return 9;
         }
         return ret;
     }
@@ -138,12 +145,13 @@ int parse_search_opts(int argc, char **argv, int opt_start, void *opts_out)
             }
             case '?':
             {
-                break;
+                fprintf("Flag not allowed: %s\n", argv[optind - 1]);
+                return EC_PARSE_ERROR;
             }
         }
     }
     
-    return 0;
+    return EC_SUCCESS;
 
 }
 

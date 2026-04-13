@@ -6,6 +6,7 @@
 #include <getopt.h>
 #include <inttypes.h>
 #include <limits.h>
+#include <stdint.h>  // uint32_t
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,7 +15,7 @@
 #include <unistd.h>
 
 // Headers
-#include "cli_parse_common.h"
+#include "cli_parse.h"
 #include "commands.h"
 #include "help.h"
 #include "list.h"
@@ -27,18 +28,18 @@ static void list_element(struct dirent *namelist, const char *base_dir, const ch
                           off_t *total_size, SortFlag sorter, ListOptions *opts);
 
 // Lists information from a given directory
-int handle_list(int argc, char **argv, int min_args)
+ErrorCode handle_list(int argc, char **argv, int min_args)
 {
     CommandContext *context = setup_command(argc, argv, min_args, print_list_help,
                                             parse_list_opts, sizeof(ListOptions));
     if (!context)
     {
-        return 10;
+        return EC_MEMORY_ALLOCATION;
     }
-    if (context->error_code != 0)
+    if (context->error_code != EC_SUCCESS)
     {
         free_command_context(context);
-        return (context->error_code == -1) ? 0 : context->error_code;
+        return (context->error_code == EC_HELP_FLAG) ? EC_SUCCESS : context->error_code;
     }
 
     ListOptions *opts = (ListOptions*)context->opts;
@@ -61,7 +62,7 @@ int handle_list(int argc, char **argv, int min_args)
         if (!sorter)
         {
             free_command_context(context);
-            return 5;
+            return EC_INVALID_SORTER;
         }
     }
 
@@ -72,11 +73,11 @@ int handle_list(int argc, char **argv, int min_args)
     {
         fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
         free_command_context(context);
-        return 6;
+        return EC_SCANDIR_ERROR;
     }
 
     // Initializes counters
-    size_t f_counter = 0, dir_counter = 0, slink_counter = 0, err_counter = 0;    
+    size_t f_counter = 0, dir_counter = 0, slink_counter = 0, err_counter = 0;
     off_t total_size = 0;
 
     for (int i = 0; i < n; i++)
@@ -87,7 +88,7 @@ int handle_list(int argc, char **argv, int min_args)
             {
                 // Prints file's name
                 printf("%s\n", namelist[i]->d_name);
-            }            
+            }
             // Recursively checks directory elements and updates counters
             list_element(namelist[i], context->base_dir, context->base_dir, &f_counter, &dir_counter,
                          &slink_counter, &err_counter, &total_size, sorter, opts);
@@ -117,25 +118,30 @@ int handle_list(int argc, char **argv, int min_args)
     {
         printf("(Finished listing with %zu erros)\n", err_counter);
         free_command_context(context);
-        return 7;
+        return EC_LIST_FEATURE;
     }
 
     free_command_context(context);
-    return 0;
+    return EC_SUCCESS;
 }
 
 // Parses through CLI arguments for 'list' functionality
-int parse_list_opts(int argc, char **argv, int opt_start, void *opts_out)
+ErrorCode parse_list_opts(int argc, char **argv, int opt_start, void *opts_out)
 {
     // Declares structure
     ListOptions *opts = (ListOptions*)opts_out;
+
+    uint32_t supported_flags = COMMON_HUMAN_READABLE |
+                               COMMON_IGNORE_CASE |
+                               COMMON_RECURSIVE |
+                               COMMON_SORT;
 
     // Sets default values
     opts->base.sort = "name";
     opts->base.ignore_case = true;
 
-    int ret = parse_common_opts(argc, argv, opt_start, &opts->base);
-    if (ret != 0)
+    ErrorCode ret = parse_common_opts(argc, argv, opt_start, &opts->base, supported_flags);
+    if (ret != EC_SUCCESS)
     {
         return ret;
     }
@@ -178,12 +184,13 @@ int parse_list_opts(int argc, char **argv, int opt_start, void *opts_out)
             // Error
             case '?':
             {
-                break;
+                fprintf("Flag not allowed: %s\n", argv[optind - 1]);
+                return EC_PARSE_ERROR;
             }
         }
     }
 
-    return 0;
+    return EC_SUCCESS;
 }
 
 // Lists current element and updates counters
@@ -191,11 +198,13 @@ static void list_element(struct dirent *namelist, const char *base_dir, const ch
                          size_t *f_counter, size_t *dir_counter, size_t *slink_counter, size_t *err_counter,
                           off_t *total_size, SortFlag sorter, ListOptions *opts)
 {
+    // Prevents infinity loop
     if (strcmp(namelist->d_name, ".") == 0 || strcmp(namelist->d_name, "..") == 0)
     {
         return;
     }
 
+    // Builds full path to current element
     char new_path[PATH_MAX];
     if (check_path_name_size(new_path, sizeof(new_path), current_path, namelist->d_name) == -1)
     {
@@ -203,6 +212,7 @@ static void list_element(struct dirent *namelist, const char *base_dir, const ch
         return;
     }
 
+    // Gets element's data
     struct stat st;
     if (stat(new_path, &st) != 0)
     {
@@ -227,24 +237,28 @@ static void list_element(struct dirent *namelist, const char *base_dir, const ch
     {
         (*dir_counter)++;
 
-        struct dirent **entry;
-        int n = scandir(new_path, &entry, NULL, sorter);
-
-        if (n == -1)
+        // Recursivelly traverses subdirectories
+        if (opts->base.recursive)
         {
-            fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
-            (*err_counter)++;
-        }
+            struct dirent **entry;
+            int n = scandir(new_path, &entry, NULL, sorter);
 
-        for (int i = 0; i < n; i++)
-        {
-            // Recursively checks directory elements and updates counters
-            list_element(entry[i], base_dir, new_path, f_counter, dir_counter, slink_counter,
-                          err_counter, total_size, sorter, opts);
-            free(entry[i]);
-        }
+            if (n == -1)
+            {
+                fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
+                (*err_counter)++;
+            }
 
-        free(entry);
+            for (int i = 0; i < n; i++)
+            {
+                // Recursively checks directory elements and updates counters
+                list_element(entry[i], base_dir, new_path, f_counter, dir_counter, slink_counter,
+                            err_counter, total_size, sorter, opts);
+                free(entry[i]);
+            }
+
+            free(entry);
+        }
     }
 
     if (opts->base.recursive)

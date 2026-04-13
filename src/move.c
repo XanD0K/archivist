@@ -5,6 +5,7 @@
 #include <errno.h>
 #include <getopt.h>
 #include <limits.h>
+#include <stdint.h>  // uint32_t
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -13,7 +14,7 @@
 #include <unistd.h>
 
 // Headers
-#include "cli_parse_common.h"
+#include "cli_parse.h"
 #include "commands.h"
 #include "help.h"
 #include "move.h"
@@ -28,18 +29,18 @@ static void move_element(char *current_path, char *dst_dir, MoveOptions *opts,
 static char *match_existed_file(char *dst_dir, char *new_dst_dir, char *name, bool skip, bool force);
 
 // Setup logic for 'move' feature
-int handle_move(int argc, char **argv, int min_args)
+ErrorCode handle_move(int argc, char **argv, int min_args)
 {
     CommandContext *context = setup_command(argc, argv, min_args, print_move_help,
                                             parse_move_opts, sizeof(MoveOptions));
     if (!context)
     {
-        return 10;
+        return EC_MEMORY_ALLOCATION;
     }
-    if (context->error_code != 0)
+    if (context->error_code != EC_SUCCESS)
     {
         free_command_context(context);
-        return (context->error_code == -1) ? 0 : context->error_code;
+        return (context->error_code == EC_HELP_FLAG) ? EC_SUCCESS : context->error_code;
     }
 
     MoveOptions *opts = (MoveOptions*)context->opts;
@@ -49,7 +50,7 @@ int handle_move(int argc, char **argv, int min_args)
     char *dst_dir = get_valid_destination(dir_path_dst);
     if (!dst_dir)
     {
-        return 4;
+        return EC_INVALID_DIRECTORY;
     }
 
     // Retrieves user's selected extensions (-e|--extension flag)
@@ -64,7 +65,7 @@ int handle_move(int argc, char **argv, int min_args)
             errno = ENOMEM;
             fprintf(stderr, "Error on memory allocation: %s\n", strerror(errno));
             free_command_context(context);
-            return 10;
+            return EC_MEMORY_ALLOCATION;
         }
     }
     
@@ -77,7 +78,7 @@ int handle_move(int argc, char **argv, int min_args)
         free_extensions(ext, ext_counter);
         fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
         free_command_context(context);
-        return 6;
+        return EC_SCANDIR_ERROR;
     }
 
     size_t moved_files = 0, created_directories = 0;
@@ -111,7 +112,7 @@ int handle_move(int argc, char **argv, int min_args)
     }
 
     free_command_context(context);
-    return 0;
+    return EC_SUCCESS;
 }
 
 // Creates destination directory
@@ -181,29 +182,38 @@ static char *get_valid_destination(const char *path)
 }
 
 // Parses through CLI arguments for 'move' functionality
-int parse_move_opts(int argc, char **argv, int opt_start, void *opts_out)
+ErrorCode parse_move_opts(int argc, char **argv, int opt_start, void *opts_out)
 {
     MoveOptions *opts = (MoveOptions*)opts_out;
 
-    int ret;
-    ret = parse_common_opts(argc, argv, opt_start, &opts->base);
-    if (ret != 0)
+    uint32_t supported_flags = COMMON_RECURSIVE |
+                               FILTER_CONTAINS |
+                               FILTER_EXTENSION |
+                               FILTER_MAX_SIZE |
+                               FILTER_MIN_SIZE |
+                               FILTER_TYPE |
+                               ACTION_DRY_RUN |
+                               ACTION_INTERACTIVE |
+                               ACTION_VERBOSE;
+
+    ErrorCode ret;
+    ret = parse_common_opts(argc, argv, opt_start, &opts->base, supported_flags);
+    if (ret != EC_SUCCESS)
     {
         return ret;
     }
-    ret = parse_filter_options(argc, argv, opt_start, &opts->filter);
-    if (ret != 0)
+    ret = parse_filter_options(argc, argv, opt_start, &opts->filter, supported_flags);
+    if (ret != EC_SUCCESS)
     {
-        if (ret == PARSE_ERROR_INVALID_SIZE)
+        if (ret == EC_PARSE_ERROR_SIZE)
         {
             errno = EIO;
             fprintf(stderr, "Invalid size: %s\n", strerror(errno));
-            return 9;
         }
         return ret;
     }
-    ret = parse_action_options(argc, argv, opt_start, &opts->action);
-    if (ret != 0)
+    ret = parse_action_options(argc, argv, opt_start, &opts->action, supported_flags);
+    if (ret != EC_SUCCESS)
     {
         return ret;
     }   
@@ -240,12 +250,13 @@ int parse_move_opts(int argc, char **argv, int opt_start, void *opts_out)
             }
             case '?':
             {
-                break;
+                fprintf("Flag not allowed: %s\n", argv[optind - 1]);
+                return EC_PARSE_ERROR;
             }
         }
     }
     
-    return 0;
+    return EC_SUCCESS;
 }
 
 // Move files from one directory to another
@@ -457,15 +468,17 @@ static void move_element(char *current_path, char *dst_dir, MoveOptions *opts,
     // Gets user's confirmation before moving file
     if (opts->action.interactive)
     {
-        char *prompt = NULL;
-        if (asprintf(&prompt, "Move file '%s' from %s to %s?", namelist->d_name, current_path, final_dst) == -1)
+        const char *prompt = NULL;
+        if (asprintf(&prompt, "Move file '%s' from %s to %s? ", namelist->d_name, current_path, final_dst) == -1)
         {
             fprintf(stderr, "Error on asprintf(): %s\n", strerror(errno));
+            free(final_dst);
             free(prompt);
             return;
         }
         if (!get_answer(prompt))
         {
+            free(final_dst);
             free(prompt);
             return;
         }

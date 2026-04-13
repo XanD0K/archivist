@@ -6,6 +6,7 @@
 #include <getopt.h>
 #include <inttypes.h>
 #include <limits.h>
+#include <stdint.h>  // uint32_t
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -14,7 +15,7 @@
 #include <unistd.h>
 
 // Headers
-#include "cli_parse_common.h"
+#include "cli_parse.h"
 #include "commands.h"
 #include "delete.h"
 #include "help.h"
@@ -29,18 +30,18 @@ static void delete_directory(DeleteOptions *opts, const char *path, size_t *dlt_
                              size_t *dlt_directories, off_t *dlt_size);
 
 // Setup logic for 'delete' feature
-int handle_delete(int argc, char **argv, int min_args)
+ErrorCode handle_delete(int argc, char **argv, int min_args)
 {
     CommandContext *context = setup_command(argc, argv, min_args, print_delete_help,
                                             parse_delete_options, sizeof(DeleteOptions));
     if (!context)
     {
-        return 10;
+        return EC_MEMORY_ALLOCATION;
     }
-    if (context->error_code != 0)
+    if (context->error_code != EC_SUCCESS)
     {
         free_command_context(context);
-        return (context->error_code == -1) ? 0 : context->error_code;
+        return (context->error_code == EC_HELP_FLAG) ? EC_SUCCESS : context->error_code;
     }
 
     DeleteOptions *opts = (DeleteOptions*)context->opts;
@@ -56,7 +57,7 @@ int handle_delete(int argc, char **argv, int min_args)
             free_command_context(context);
             errno = ENOMEM;
             fprintf(stderr, "Error on memory allocation: %s\n", strerror(errno));
-            return 10;
+            return EC_MEMORY_ALLOCATION;
         }
     }
 
@@ -68,7 +69,7 @@ int handle_delete(int argc, char **argv, int min_args)
         free_extensions(ext, ext_counter);
         free_command_context(context);
         fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
-        return 6;
+        return EC_SCANDIR_ERROR;
     }
 
     // Parses directory's content
@@ -114,38 +115,48 @@ int handle_delete(int argc, char **argv, int min_args)
 
     free_command_context(context);
     free(f_out);
-    return 0;
+    return EC_SUCCESS;
 }
 
 // Parses through CLI arguments for 'delete' functionality
-int parse_delete_options(int argc, char **argv, int opt_start, void *opts_out)
+ErrorCode parse_delete_options(int argc, char **argv, int opt_start, void *opts_out)
 {
     DeleteOptions *opts = (DeleteOptions*)opts_out;
 
-    int ret;
-    ret = parse_common_opts(argc, argv, opt_start, &opts->base);
-    if (ret != 0)
+    uint32_t supported_flags = COMMON_HUMAN_READABLE |
+                               COMMON_RECURSIVE |
+                               FILTER_CONTAINS |
+                               FILTER_EXTENSION |
+                               FILTER_MAX_SIZE |
+                               FILTER_MIN_SIZE |
+                               FILTER_TYPE |
+                               ACTION_DRY_RUN |
+                               ACTION_INTERACTIVE |
+                               ACTION_VERBOSE;
+
+    ErrorCode ret;
+    ret = parse_common_opts(argc, argv, opt_start, &opts->base, supported_flags);
+    if (ret != EC_SUCCESS)
     {
         return ret;
     }
-    ret = parse_filter_options(argc, argv, opt_start, &opts->filter);
-    if (ret != 0)
+    ret = parse_filter_options(argc, argv, opt_start, &opts->filter, supported_flags);
+    if (ret != EC_SUCCESS)
     {
-        if (ret == PARSE_ERROR_INVALID_SIZE)
+        if (ret == EC_PARSE_ERROR_SIZE)
         {
             errno = EIO;
             fprintf(stderr, "Invalid size: %s\n", strerror(errno));
-            return 9;
         }
         return ret;
     }
-    ret = parse_action_options(argc, argv, opt_start, &opts->action);
-    if (ret != 0)
+    ret = parse_action_options(argc, argv, opt_start, &opts->action, supported_flags);
+    if (ret != EC_SUCCESS)
     {
         return ret;
     }
     
-    return 0;
+    return EC_SUCCESS;
 }
 
 // Deletes elements

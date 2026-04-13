@@ -7,6 +7,7 @@
 
 // Headers
 #include "cli_opts.h"
+#include "error_code.h"
 
 // Alias of a pointer to a function
 typedef int (*SortReport)(const void *a, const void *b);
@@ -19,7 +20,7 @@ typedef struct
 } ReportOptions;
 
 // Prototypes
-int handle_report(int argc, char **argv, int min_args);
-int parse_report_opts(int argc, char **argv, int opt_start, void *opts_out);
+ErrorCode handle_report(int argc, char **argv, int min_args);
+ErrorCode parse_report_opts(int argc, char **argv, int opt_start, void *opts_out);
 
 #endif

@@ -5,8 +5,11 @@
 #include <stdbool.h>
 #include <stddef.h>  // size_t
 
+// Headers
+#include "error_code.h"
+
 // Type/Alias
-typedef int (*CommandHandler)(int argc, char **argv, int min_args);
+typedef ErrorCode (*CommandHandler)(int argc, char **argv, int min_args);
 typedef void (*PrintHelp)(void);
 typedef int (*ParseOptions)(int argc, char **argv, int opt_start, void *opts_out);
 
@@ -21,7 +24,7 @@ typedef struct
 
 // Structure to hande setup of each command
 typedef struct {
-    int error_code;
+    ErrorCode error_code;
     char *base_dir;
     char *dst_dir;
     int opt_start;
@@ -29,8 +32,8 @@ typedef struct {
 } CommandContext;
 
 // Prototypes
-int execute_command(int argc, char **argv);
-int handle_tree(int argc, char **argv, int min_args);  // tree.c
+ErrorCode execute_command(int argc, char **argv);
+ErrorCode handle_tree(int argc, char **argv, int min_args);  // tree.c
 CommandContext *setup_command(int argc, char **argv, int min_args, PrintHelp print_help,
                               ParseOptions parser, size_t opts_size);
 void free_command_context(CommandContext *context);

@@ -3,6 +3,7 @@
 // Libraries
 #include <errno.h>
 #include <getopt.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <strings.h>
@@ -10,7 +11,7 @@
 #include <unistd.h>
 
 // Headers
-#include "cli_parse_common.h"
+#include "cli_parse.h"
 #include "commands.h"
 #include "help.h"
 #include "rename.h"
@@ -24,17 +25,17 @@ static void rename_element(struct dirent *namelist, Extension *ext, size_t ext_c
                            RenameOptions *opts, size_t *current_counter);
 static char *generate_unique_name(char *current_path, char *old_name, char *input_name, size_t *current_counter);
 
-int handle_rename(int argc, char **argv, int min_args)
+ErrorCode handle_rename(int argc, char **argv, int min_args)
 {
     CommandContext *context = setup_command(argc, argv, min_args, print_rename_help, parse_rename_options, sizeof(RenameOptions));
     if (!context)
     {
-        return 10;
+        return EC_MEMORY_ALLOCATION;
     }
-    if (context->error_code != 0)
+    if (context->error_code != EC_SUCCESS)
     {
         free_command_context(context);
-        return (context->error_code == -1) ? 0 : context->error_code;
+        return (context->error_code == EC_HELP_FLAG) ? EC_SUCCESS : context->error_code;
     }
 
     RenameOptions *opts = (RenameOptions*)context->opts;
@@ -51,7 +52,7 @@ int handle_rename(int argc, char **argv, int min_args)
         if (!sorter)
         {
             free_command_context(context);
-            return 5;
+            return EC_INVALID_SORTER;
         }
     }
 
@@ -65,7 +66,7 @@ int handle_rename(int argc, char **argv, int min_args)
             free_command_context(context);
             errno = ENOMEM;
             fprintf(stderr, "Error on memory allocation: %s\n", strerror(errno));
-            return 10;
+            return EC_MEMORY_ALLOCATION;
         }
     }
 
@@ -76,10 +77,10 @@ int handle_rename(int argc, char **argv, int min_args)
         free_extensions(ext, ext_counter);
         free_command_context(context);
         fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
-        return 6;
+        return EC_SCANDIR_ERROR;
     }
 
-    size_t name_counter = 0;
+    size_t name_counter = 1;
     for (int i = 0; i < n; i++)
     {
         if (strcmp(namelist[i]->d_name, ".") != 0 && strcmp(namelist[i]->d_name, "..") != 0)
@@ -91,35 +92,45 @@ int handle_rename(int argc, char **argv, int min_args)
     }
 
     free(namelist);
+    return EC_SUCCESS;
 }
 
 // Parses through CLI arguments for 'rename' functionality
-int parse_rename_options(int argc, char **argv, int opt_start, void *opts_out)
+ErrorCode parse_rename_options(int argc, char **argv, int opt_start, void *opts_out)
 {
     RenameOptions *opts = (RenameOptions*)opts_out;
     opts->base.sort = "name";
 
-    int ret;
-    ret = parse_common_opts(argc, argv, opt_start, &opts->base);
-    if (ret != 0)
+    uint32_t supported_flags = COMMON_RECURSIVE |
+                               COMMON_SORT |
+                               FILTER_CONTAINS |
+                               FILTER_EXTENSION |
+                               FILTER_MAX_SIZE |
+                               FILTER_MIN_SIZE |
+                               ACTION_DRY_RUN |
+                               ACTION_INTERACTIVE |
+                               ACTION_VERBOSE;
+
+    ErrorCode ret;
+    ret = parse_common_opts(argc, argv, opt_start, &opts->base, supported_flags);
+    if (ret != EC_SUCCESS)
     {
         return ret;
     }
 
-    ret = parse_filter_options(argc, argv, opt_start, &opts->filter);
-    if (ret != 0)
+    ret = parse_filter_options(argc, argv, opt_start, &opts->filter, supported_flags);
+    if (ret != EC_SUCCESS)
     {
-        if (ret == PARSE_ERROR_INVALID_SIZE)
+        if (ret == EC_PARSE_ERROR_SIZE)
         {
             errno = EIO;
             fprintf(stderr, "Invalid size: %s\n", strerror(errno));
-            return 9;
         }
         return ret;
     }
 
-    ret = parse_action_options(argc, argv, opt_start, &opts->action);
-    if (ret != 0)
+    ret = parse_action_options(argc, argv, opt_start, &opts->action, supported_flags);
+    if (ret != EC_SUCCESS)
     {
         return ret;
     }   
@@ -148,12 +159,13 @@ int parse_rename_options(int argc, char **argv, int opt_start, void *opts_out)
             // Error
             case '?':
             {
-                break;
+                fprintf("Flag not allowed: %s\n", argv[optind - 1]);
+                return EC_PARSE_ERROR;
             }
         }
     }
-    
-    return 0;
+
+    return EC_SUCCESS;
 }
 
 // Renames files from given directory
@@ -186,7 +198,7 @@ static void rename_element(struct dirent *namelist, Extension *ext, size_t ext_c
         {
             return;
         }
-        size_t name_counter = 0;
+        size_t name_counter = 1;
         for (int i = 0; i < n; i++)
         {
             rename_element(namelist, ext, ext_counter, base_dir, old_path, sorter, opts, name_counter);
@@ -226,17 +238,49 @@ static void rename_element(struct dirent *namelist, Extension *ext, size_t ext_c
     }
 
     // Gets new name
-    const char *new_path = match_existed_file(current_path, namelist->d_name, opts->name, &current_counter);
+    const char *new_path = generate_unique_name(current_path, namelist->d_name, opts->name, &current_counter);
     if (!new_path)
     {
         return;
     }
 
-    // Renames files
-    rename(old_path, new_path);
-    
-    // Outputs
+    if (opts->action.interactive)
+    {
+        const char *prompt = NULL;
+        if (asprintf(&prompt, "Rename file %s? ", old_path) == -1)
+        {
+            fprintf(stderr, "Error on asprintf(): %s\n", strerror(errno));
+            free(new_path);
+            free(prompt);
+            return;
+        }
+        if (!get_answer(prompt))
+        {
+            free(new_path);
+            free(prompt);
+            return;
+        }
 
+        free(prompt);
+    }
+
+    if (opts->action.dry_run)
+    {
+        printf("[DRY-RUN] would rename file '%s' to '%s'\n", old_path, new_path);
+    }
+    else
+    {
+        // Renames files
+        if (rename(old_path, new_path) == 0)
+        {
+            if (opts->action.verbose)
+            {
+                printf("File '%s' renamed to '%s'\n", namelist->d_name, new_path);
+            }
+        }
+    }
+
+    free(new_path);
 }
 
 // Defines behaviour when file already exists on destination

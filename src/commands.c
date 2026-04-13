@@ -24,13 +24,13 @@ static bool validate_args(int argc, ptrdiff_t index, const CommandEntry cmd_tabl
 static bool check_args_count(int argc, ptrdiff_t index, const CommandEntry cmd_table[]);
 
 // Validades and executes commands
-int execute_command(int argc, char **argv)
+ErrorCode execute_command(int argc, char **argv)
 {
     if (argc < 2)
     {        
         fprintf(stderr, "Usage: ./archivist COMMAND [arguments]\n"
                         "Check available commands with: ./archivist help\n");
-        return 1;
+        return EC_INVALID_ARGC;
     }
 
     // Calls 'help' functionality
@@ -39,10 +39,10 @@ int execute_command(int argc, char **argv)
         if (argc != 2)
         {
             fprintf(stderr, "Usage: ./archivist help\n");
-            return 1;
+            return EC_INVALID_ARGC;
         }
         handle_help();
-        return 0;
+        return EC_HELP_FLAG;
     }
 
     // Table with available commands
@@ -73,17 +73,17 @@ int execute_command(int argc, char **argv)
     {
         fprintf(stderr, "Invalid command: %s!"
                         "Check available commands with: ./archivist help\n", argv[1]);
-        return 2;
+        return EC_INVALID_COMMAND;
     }
 
-    // Checks number of arguments
+    // Checks number of arguments for given command
     if (!validate_args(argc, index, cmd_table))
     {
-        return 3;
+        return EC_INVALID_COMMAND_ARGC;
     }
     
     // Calls handler function
-    const int handler_result = cmd_table[index].handler(argc, argv, cmd_table[index].min_args);
+    const ErrorCode handler_result = cmd_table[index].handler(argc, argv, cmd_table[index].min_args);
     return handler_result;
 }
 
@@ -192,6 +192,7 @@ static bool check_args_count(int argc, ptrdiff_t index, const CommandEntry cmd_t
     return (argc >= min && argc <= max);
 }
 
+// Configures and Validates features' initial data
 CommandContext *setup_command(int argc, char **argv, int min_args, PrintHelp print_help,
                               ParseOptions parser, size_t opts_size)
 {
@@ -207,7 +208,7 @@ CommandContext *setup_command(int argc, char **argv, int min_args, PrintHelp pri
     if (check_help(argc, argv[2]))
     {
         print_help();
-        context->error_code = -1;
+        context->error_code = EC_HELP_FLAG;
         return context;
     }
 
@@ -224,7 +225,7 @@ CommandContext *setup_command(int argc, char **argv, int min_args, PrintHelp pri
     context->base_dir = get_valid_directory(dir_path);
     if (!context->base_dir)
     {
-        context->error_code = 4;
+        context->error_code = EC_INVALID_DIRECTORY;
         return context;
     }
 
@@ -233,17 +234,17 @@ CommandContext *setup_command(int argc, char **argv, int min_args, PrintHelp pri
     {
         errno = ENOMEM;
         fprintf(stderr, "Error on memory allocation: %s\n", strerror(errno));
-        context->error_code = 10;
+        context->error_code = EC_MEMORY_ALLOCATION;
         return context;
     }
     int parse_err = parser(argc, argv, context->opt_start, context->opts);
-    if (parse_err != 0)
+    if (parse_err != EC_SUCCESS)
     {
         context->error_code = parse_err;
         return context;
     }
 
-    context->error_code = 0;
+    context->error_code = EC_SUCCESS;
     return context;
 }
 
