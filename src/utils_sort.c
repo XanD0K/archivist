@@ -1,14 +1,17 @@
 #define _GNU_SOURCE
 
 // Libraries
+#include <ctype.h>
 #include <errno.h>
 #include <limits.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
 
 // Headers
+#include "utils.h"
 #include "utils_sort.h"
 
 // Globals
@@ -56,7 +59,7 @@ SortFlag get_sort_function(char *sort, const char **sorts, size_t len)
 }
 
 // Organizes by name
-static int cmp_name_scandir(const struct dirent **a, const struct dirent **b)
+int cmp_name_scandir(const struct dirent **a, const struct dirent **b)
 {
     // Directories before files
     if (cmp_opts.dir_first)
@@ -76,7 +79,7 @@ static int cmp_name_scandir(const struct dirent **a, const struct dirent **b)
 }
 
 // Organizes by version (distinguish alphabetical and numerical characters)
-static int cmp_version_scandir(const struct dirent **a, const struct dirent **b)
+int cmp_version_scandir(const struct dirent **a, const struct dirent **b)
 {
     // Directories before files
     if (cmp_opts.dir_first)
@@ -186,7 +189,7 @@ static int cmp_version_scandir(const struct dirent **a, const struct dirent **b)
 }
 
 // Organizes by date
-static int cmp_date_scandir(const struct dirent **a, const struct dirent **b)
+int cmp_date_scandir(const struct dirent **a, const struct dirent **b)
 {
     // Directories before files
     if (cmp_opts.dir_first)
@@ -218,7 +221,7 @@ static int cmp_date_scandir(const struct dirent **a, const struct dirent **b)
 }
 
 // Organizes by size
-static int cmp_size_scandir(const struct dirent **a, const struct dirent **b)
+int cmp_size_scandir(const struct dirent **a, const struct dirent **b)
 {
     // Directories before files
     if (cmp_opts.dir_first)
@@ -249,7 +252,7 @@ static int cmp_size_scandir(const struct dirent **a, const struct dirent **b)
 }
 
 // Organizes by extension
-static int cmp_ext_scandir(const struct dirent **a, const struct dirent **b)
+int cmp_ext_scandir(const struct dirent **a, const struct dirent **b)
 {
     // Directories before files
     if (cmp_opts.dir_first)
@@ -270,7 +273,7 @@ static int cmp_ext_scandir(const struct dirent **a, const struct dirent **b)
 }
 
 // Helper function that puts directories before files
-static int check_is_dir(const struct dirent *a, const struct dirent *b)
+int check_is_dir(const struct dirent *a, const struct dirent *b)
 {
     int is_dir_a = (a->d_type == DT_DIR);
     int is_dir_b = (b->d_type == DT_DIR);

@@ -21,11 +21,11 @@ extern CompareOptions cmp_opts;
 
 // Prototypes
 SortFlag get_sort_function(char *sort, const char **sorts, size_t len);
-static int cmp_version_scandir(const struct dirent **a, const struct dirent **b);
-static int cmp_name_scandir(const struct dirent **a, const struct dirent **b);
-static int cmp_date_scandir(const struct dirent **a, const struct dirent **b);
-static int cmp_size_scandir(const struct dirent **a, const struct dirent **b);
-static int cmp_ext_scandir(const struct dirent **a, const struct dirent **b);
-static int check_is_dir(const struct dirent *a, const struct dirent *b);
+int cmp_version_scandir(const struct dirent **a, const struct dirent **b);
+int cmp_name_scandir(const struct dirent **a, const struct dirent **b);
+int cmp_date_scandir(const struct dirent **a, const struct dirent **b);
+int cmp_size_scandir(const struct dirent **a, const struct dirent **b);
+int cmp_ext_scandir(const struct dirent **a, const struct dirent **b);
+int check_is_dir(const struct dirent *a, const struct dirent *b);
 
 #endif
