@@ -1,16 +1,14 @@
 #ifndef RENAME_H
 #define RENAME_H
 
-// Libraries
-#include <dirent.h>
-
 // Headers
 #include "cli_opts.h"
 #include "error_code.h"
 
+// Flags structure
 typedef struct
 {
-    CommonOptions base;  // recursive | sort
+    CommonOptions base;    // recursive | sort
     FilterOptions filter;  // contains | extension | max-size | min-size
     ActionOptions action;  // dry-run | interactive | verbose
     char *name;

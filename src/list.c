@@ -27,7 +27,7 @@ static void list_element(struct dirent *namelist, const char *base_dir, const ch
                          size_t *f_counter, size_t *dir_counter, size_t *slink_counter, size_t *err_counter,
                           off_t *total_size, SortFlag sorter, ListOptions *opts);
 
-// Lists information from a given directory
+// Setup logic for 'list' feature
 ErrorCode handle_list(int argc, char **argv, int min_args)
 {
     CommandContext *context = setup_command(argc, argv, min_args, print_list_help,
@@ -39,7 +39,9 @@ ErrorCode handle_list(int argc, char **argv, int min_args)
     if (context->error_code != EC_SUCCESS)
     {
         free_command_context(context);
-        return (context->error_code == EC_HELP_FLAG) ? EC_SUCCESS : context->error_code;
+        return (context->error_code == EC_HELP_FLAG || context->error_code == EC_CMD_HELP_FLAG)
+            ? EC_SUCCESS
+            : context->error_code;
     }
 
     ListOptions *opts = (ListOptions*)context->opts;
@@ -50,7 +52,7 @@ ErrorCode handle_list(int argc, char **argv, int min_args)
     cmp_opts.ignore_case = opts->base.ignore_case;
     cmp_opts.base_dir = context->base_dir;
 
-    // Default sorter function
+    // Default sorter function (by name)
     SortFlag sorter = cmp_name_scandir;
     if (opts->base.sort && strcasecmp(opts->base.sort, "name") != 0)
     {
@@ -99,7 +101,7 @@ ErrorCode handle_list(int argc, char **argv, int min_args)
 
     free(namelist);
 
-    // Prints f_counter, dir_counter and total_size variables
+    // Prints f_counter, dir_counter slink_counter and total_size variables
     printf("Directories: %zu\n"
            "Files: %zu\n"
            "Simbolic Links: %zu\n", dir_counter, f_counter, slink_counter);
@@ -184,7 +186,7 @@ ErrorCode parse_list_opts(int argc, char **argv, int opt_start, void *opts_out)
             // Error
             case '?':
             {
-                fprintf("Flag not allowed: %s\n", argv[optind - 1]);
+                fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
                 return EC_PARSE_ERROR;
             }
         }
@@ -221,18 +223,18 @@ static void list_element(struct dirent *namelist, const char *base_dir, const ch
         return;
     }
 
-    // File
+    // ============= Files =============
     if (S_ISREG(st.st_mode))
     {
         (*f_counter)++;
         *total_size += st.st_size;
     }
-    // Simbolic Link
+    // ============ Slinks =============
     else if (S_ISLNK(st.st_mode))
     {
         (*slink_counter)++;
     }
-    // Directory
+    // ========== Directories ==========
     else if (S_ISDIR(st.st_mode))
     {
         (*dir_counter)++;

@@ -22,7 +22,6 @@
 #include "utils_filter.h"
 
 // Prototypes
-static char *get_valid_destination(const char *path);
 static void move_element(char *current_path, char *dst_dir, MoveOptions *opts,
                          struct dirent *namelist, Extension *ext, size_t ext_counter,
                          size_t *moved_files, size_t *created_directories);
@@ -40,10 +39,10 @@ ErrorCode handle_move(int argc, char **argv, int min_args)
     if (context->error_code != EC_SUCCESS)
     {
         free_command_context(context);
-        return (context->error_code == EC_HELP_FLAG) ? EC_SUCCESS : context->error_code;
+        return (context->error_code == EC_HELP_FLAG || context->error_code == EC_CMD_HELP_FLAG)
+            ? EC_SUCCESS
+            : context->error_code;
     }
-
-    MoveOptions *opts = (MoveOptions*)context->opts;
 
     const char *dir_path_dst = (argc >= 4 && argv[3][0] != '-') ? argv[2] : argv[3];
     // Checks/Creates destination directory
@@ -52,6 +51,8 @@ ErrorCode handle_move(int argc, char **argv, int min_args)
     {
         return EC_INVALID_DIRECTORY;
     }
+
+    MoveOptions *opts = (MoveOptions*)context->opts;
 
     // Retrieves user's selected extensions (-e|--extension flag)
     Extension *ext = NULL;
@@ -113,72 +114,6 @@ ErrorCode handle_move(int argc, char **argv, int min_args)
 
     free_command_context(context);
     return EC_SUCCESS;
-}
-
-// Creates destination directory
-static char *get_valid_destination(const char *path)
-{
-    // Checks for valid directory
-    if (!path || path[0] == '\0')
-    {
-        errno = ENOTDIR;
-        fprintf(stderr, "Error accessing diretory %s: %s\n", path, strerror(errno));
-        return NULL;
-    }
-
-    // Copies original path
-    char *cpy_path = strdup(path);
-    if (!cpy_path)
-    {
-        fprintf(stderr, "Error duplicating diretory %s: %s\n", path, strerror(errno));
-        return NULL;
-    }
-
-    // Creates starting path
-    char current_path[PATH_MAX];
-    current_path[0] = '.';
-    current_path[1] = '\0';
-    if (cpy_path[0] == '/')
-    {
-        current_path[0] = '/';
-    }
-
-    // Iterates through every directory
-    char *token = strtok(cpy_path, "/");
-    while (token != NULL)
-    {
-        // Creates new path
-        char new_path[PATH_MAX];
-        if (check_path_name_size(new_path, sizeof(new_path), current_path, token) == -1)
-        {
-            free(cpy_path);
-            fprintf(stderr, "Path too long: %s\n", strerror(errno));
-            return NULL;
-        }
-
-        // Creates directory
-        if (mkdir(new_path, 0755) != 0)
-        {
-            if (errno != EEXIST)
-            {
-                free(cpy_path);
-                fprintf(stderr, "Error on mkdir(): %s\n", strerror(errno));
-                return NULL;
-            }
-        }
-
-        // Updates current path for recursiveness
-        if (check_path_name_size(current_path, sizeof(current_path), new_path, NULL) == -1)
-        {
-            free(cpy_path);
-            fprintf(stderr, "Path too long: %s\n", strerror(errno));
-            return NULL;
-        }
-        token = strtok(NULL, "/");
-    }
-
-    free(cpy_path);
-    return strdup(current_path);
 }
 
 // Parses through CLI arguments for 'move' functionality
@@ -250,7 +185,7 @@ ErrorCode parse_move_opts(int argc, char **argv, int opt_start, void *opts_out)
             }
             case '?':
             {
-                fprintf("Flag not allowed: %s\n", argv[optind - 1]);
+                fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
                 return EC_PARSE_ERROR;
             }
         }
@@ -289,7 +224,7 @@ static void move_element(char *current_path, char *dst_dir, MoveOptions *opts,
         return;
     }
 
-    // Recursively calls function on subdirectories
+    // ==================== DIRECTORIES ====================
     if (S_ISDIR(st.st_mode))
     {
         if (is_directory_type(opts->filter.type))
@@ -414,6 +349,7 @@ static void move_element(char *current_path, char *dst_dir, MoveOptions *opts,
         return;
     }
 
+    // ================== FILES & SLINKS ===================
     if (!S_ISREG(st.st_mode) && !S_ISLNK(st.st_mode))
     {
         return;
@@ -433,9 +369,22 @@ static void move_element(char *current_path, char *dst_dir, MoveOptions *opts,
             return;
         }
     }
+
+    // Checks for extension
+    if (ext != NULL && !match_extension(ext, ext_counter, namelist->d_name))
+    {
+        return;
+    }
+
+    // Checks for size
+    if ((opts->filter.max_size || opts->filter.min_size) &&
+        !match_size(opts->filter.max_size, opts->filter.min_size, st.st_size))
+    {
+        return;
+    }
+
     // Checks for already existed file (force, skip)
     bool existed = access(new_dst_dir, F_OK) == 0;
-    
     char *final_dst = NULL;
     if (existed)
     {
@@ -450,25 +399,10 @@ static void move_element(char *current_path, char *dst_dir, MoveOptions *opts,
         final_dst = strdup(new_dst_dir);
     }
 
-    // Checks for extension
-    if (ext != NULL && !match_extension(ext, ext_counter, namelist->d_name))
-    {
-        free(final_dst);
-        return;
-    }
-
-    // Checks for size
-    if ((opts->filter.max_size || opts->filter.min_size) &&
-        !match_size(opts->filter.max_size, opts->filter.min_size, st.st_size))
-    {
-        free(final_dst);
-        return;
-    }
-
     // Gets user's confirmation before moving file
     if (opts->action.interactive)
     {
-        const char *prompt = NULL;
+        char *prompt = NULL;
         if (asprintf(&prompt, "Move file '%s' from %s to %s? ", namelist->d_name, current_path, final_dst) == -1)
         {
             fprintf(stderr, "Error on asprintf(): %s\n", strerror(errno));

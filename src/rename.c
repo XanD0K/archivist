@@ -2,10 +2,12 @@
 
 // Libraries
 #include <errno.h>
+#include <dirent.h>
 #include <getopt.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -23,19 +25,24 @@
 static void rename_element(struct dirent *namelist, Extension *ext, size_t ext_counter,
                            const char *base_dir, const char *current_path, SortFlag sorter,
                            RenameOptions *opts, size_t *current_counter);
-static char *generate_unique_name(char *current_path, char *old_name, char *input_name, size_t *current_counter);
+static char *generate_unique_name(const char *current_path, char *old_name, char *input_name, size_t *counter);
 
+// Setup logic for 'rename' feature
 ErrorCode handle_rename(int argc, char **argv, int min_args)
 {
-    CommandContext *context = setup_command(argc, argv, min_args, print_rename_help, parse_rename_options, sizeof(RenameOptions));
+    CommandContext *context = setup_command(argc, argv, min_args, print_rename_help,
+                                            parse_rename_options, sizeof(RenameOptions));
     if (!context)
     {
         return EC_MEMORY_ALLOCATION;
     }
+
     if (context->error_code != EC_SUCCESS)
     {
         free_command_context(context);
-        return (context->error_code == EC_HELP_FLAG) ? EC_SUCCESS : context->error_code;
+        return (context->error_code == EC_HELP_FLAG || context->error_code == EC_CMD_HELP_FLAG)
+            ? EC_SUCCESS
+            : context->error_code;
     }
 
     RenameOptions *opts = (RenameOptions*)context->opts;
@@ -159,7 +166,7 @@ ErrorCode parse_rename_options(int argc, char **argv, int opt_start, void *opts_
             // Error
             case '?':
             {
-                fprintf("Flag not allowed: %s\n", argv[optind - 1]);
+                fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
                 return EC_PARSE_ERROR;
             }
         }
@@ -201,7 +208,7 @@ static void rename_element(struct dirent *namelist, Extension *ext, size_t ext_c
         size_t name_counter = 1;
         for (int i = 0; i < n; i++)
         {
-            rename_element(namelist, ext, ext_counter, base_dir, old_path, sorter, opts, name_counter);
+            rename_element(namelist, ext, ext_counter, base_dir, old_path, sorter, opts, &name_counter);
             free(entry[i]);
         }
 
@@ -238,7 +245,7 @@ static void rename_element(struct dirent *namelist, Extension *ext, size_t ext_c
     }
 
     // Gets new name
-    const char *new_path = generate_unique_name(current_path, namelist->d_name, opts->name, &current_counter);
+    char *new_path = generate_unique_name(current_path, namelist->d_name, opts->name, current_counter);
     if (!new_path)
     {
         return;
@@ -246,7 +253,7 @@ static void rename_element(struct dirent *namelist, Extension *ext, size_t ext_c
 
     if (opts->action.interactive)
     {
-        const char *prompt = NULL;
+        char *prompt = NULL;
         if (asprintf(&prompt, "Rename file %s? ", old_path) == -1)
         {
             fprintf(stderr, "Error on asprintf(): %s\n", strerror(errno));
@@ -284,7 +291,7 @@ static void rename_element(struct dirent *namelist, Extension *ext, size_t ext_c
 }
 
 // Defines behaviour when file already exists on destination
-static char *generate_unique_name(char *current_path, char *old_name, char *input_name, size_t *counter)
+static char *generate_unique_name(const char *current_path, char *old_name, char *input_name, size_t *counter)
 {
     // Default behavior: incremental rename
     const char *dot = strrchr(old_name, '.');
