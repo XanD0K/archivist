@@ -41,7 +41,9 @@ ErrorCode handle_delete(int argc, char **argv, int min_args)
     if (context->error_code != EC_SUCCESS)
     {
         free_command_context(context);
-        return (context->error_code == EC_HELP_FLAG) ? EC_SUCCESS : context->error_code;
+        return (context->error_code == EC_HELP_FLAG || context->error_code == EC_CMD_HELP_FLAG)
+            ? EC_SUCCESS
+            : context->error_code;
     }
 
     DeleteOptions *opts = (DeleteOptions*)context->opts;

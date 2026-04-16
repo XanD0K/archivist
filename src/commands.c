@@ -7,11 +7,13 @@
 #include <strings.h>
 
 // Headers
+#include "backup.h"
 #include "commands.h"
 #include "delete.h"
 #include "help.h"
 #include "list.h"
 #include "move.h"
+#include "recover.h"
 #include "rename.h"
 #include "report.h"
 #include "search_cmd.h"
@@ -48,19 +50,19 @@ ErrorCode execute_command(int argc, char **argv)
     // Table with available commands
     const CommandEntry cmd_table[] = 
     {
-        {"list", handle_list, 2, 8},
+        {"backup", handle_backup, 4, 4},
         {"delete", handle_delete, 2, 18},
+        {"list", handle_list, 2, 8},
         {"move", handle_move, 3, 20},
+        {"recover", handle_recover, 4, 5},
+        {"rename", handle_rename, 2, 18},        
         {"report", handle_report, 2, 9},
         {"search", handle_search, 3, 11},
         {"tree", handle_tree, 2, 3},
         {NULL, NULL, 0, 0}
 
         /*
-        {"backup", handle_backup, 4, 4},
-        {"log", handle_log, 2, 2},
-        {"rename", handle_rename, 3, 5},
-        {"restore", handle_restore, 4, 5},
+        {"log", handle_log, 2, 2},        
         */
     };
 
@@ -208,7 +210,7 @@ CommandContext *setup_command(int argc, char **argv, int min_args, PrintHelp pri
     if (check_help(argc, argv[2]))
     {
         print_help();
-        context->error_code = EC_HELP_FLAG;
+        context->error_code = EC_CMD_HELP_FLAG;
         return context;
     }
 
@@ -237,7 +239,7 @@ CommandContext *setup_command(int argc, char **argv, int min_args, PrintHelp pri
         context->error_code = EC_MEMORY_ALLOCATION;
         return context;
     }
-    int parse_err = parser(argc, argv, context->opt_start, context->opts);
+    ErrorCode parse_err = parser(argc, argv, context->opt_start, context->opts);
     if (parse_err != EC_SUCCESS)
     {
         context->error_code = parse_err;

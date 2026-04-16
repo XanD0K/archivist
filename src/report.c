@@ -37,7 +37,7 @@ static void print_report_output(Extension *ext, size_t ext_counter, bool human_r
                                 size_t total_files, off_t total_size);
 static void clear_new_elements(Extension **ext, size_t old_capacity, size_t new_capacity);
 
-// Creates a report about the content of a given directory
+// Setup logic for 'report' feature
 ErrorCode handle_report(int argc, char **argv, int min_args)
 {
     CommandContext *context = setup_command(argc, argv, min_args, print_report_help,
@@ -49,7 +49,9 @@ ErrorCode handle_report(int argc, char **argv, int min_args)
     if (context->error_code != EC_SUCCESS)
     {
         free_command_context(context);
-        return (context->error_code == EC_HELP_FLAG) ? EC_SUCCESS : context->error_code;
+        return (context->error_code == EC_HELP_FLAG || context->error_code == EC_CMD_HELP_FLAG)
+            ? EC_SUCCESS
+            : context->error_code;
     }
 
     // Parses CLI arguments

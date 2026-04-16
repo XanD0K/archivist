@@ -4,7 +4,7 @@
 #include <stddef.h>  // NULL
 #include <stdio.h>
 #include <string.h>
-#include <unistd.h>
+#include <unistd.h>  // optind | optarg
 
 // Headers
 #include "cli_parse.h"
@@ -78,7 +78,7 @@ ErrorCode parse_common_opts(int argc, char **argv, int opt_start, CommonOptions 
 
 unsupported:
     fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
-    return EC_PARSE_ERROR;
+    return EC_PARSE_ERROR_UNSUPPORTED;
 }
 
 ErrorCode parse_filter_options(int argc, char **argv, int opt_start, FilterOptions *opts, uint32_t supported_flags)
@@ -167,7 +167,7 @@ ErrorCode parse_filter_options(int argc, char **argv, int opt_start, FilterOptio
 
 unsupported:
     fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
-    return EC_PARSE_ERROR;
+    return EC_PARSE_ERROR_UNSUPPORTED;
 }
 
 ErrorCode parse_action_options(int argc, char **argv, int opt_start, ActionOptions *opts, uint32_t supported_flags)
@@ -228,5 +228,5 @@ ErrorCode parse_action_options(int argc, char **argv, int opt_start, ActionOptio
 
 unsupported:
     fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
-    return EC_PARSE_ERROR;
+    return EC_PARSE_ERROR_UNSUPPORTED;
 }

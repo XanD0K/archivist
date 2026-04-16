@@ -20,14 +20,14 @@ static void print_tree(struct dirent **namelist, char *base_dir, int n);
 static void print_branch(struct dirent *namelist, char *current_path, const char *base_dir, char *prefix, bool is_last);
 static char *concatenates_prefix(char *prefix, char *sufix);
 
-// Displays directory's structure 
+// Setup logic for 'tree' feature
 ErrorCode handle_tree(int argc, char **argv, int min_args)
 {
     // Checks for 'help' flag
     if (check_help(argc, argv[min_args]))
     {
         print_tree_help();
-        return EC_HELP_FLAG;
+        return EC_CMD_HELP_FLAG;
     }
 
     // Gets valid base directory (default: .)

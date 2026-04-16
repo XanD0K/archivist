@@ -28,7 +28,7 @@ static void search_element(char *current_path, const char *base_dir, SearchOptio
 static bool match_searched_name(const char *current_name, const char *searched, bool contains, bool ignore_case);
 static bool match_searched_extension(const char *current_name, const char *ext);
 
-// Searches for a specific file/directory
+// Setup logic for 'search' feature
 ErrorCode handle_search(int argc, char **argv, int min_args)
 {
     CommandContext *context = setup_command(argc, argv, min_args, print_search_help,
@@ -40,7 +40,9 @@ ErrorCode handle_search(int argc, char **argv, int min_args)
     if (context->error_code != EC_SUCCESS)
     {
         free_command_context(context);
-        return (context->error_code == EC_HELP_FLAG) ? EC_SUCCESS : context->error_code;
+        return (context->error_code == EC_HELP_FLAG || context->error_code == EC_CMD_HELP_FLAG)
+            ? EC_SUCCESS
+            : context->error_code;
     }
 
     SearchOptions *opts = (SearchOptions*)context->opts;
@@ -145,7 +147,7 @@ ErrorCode parse_search_opts(int argc, char **argv, int opt_start, void *opts_out
             }
             case '?':
             {
-                fprintf("Flag not allowed: %s\n", argv[optind - 1]);
+                fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
                 return EC_PARSE_ERROR;
             }
         }
