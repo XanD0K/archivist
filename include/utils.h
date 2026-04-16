@@ -6,7 +6,8 @@
 #include <dirent.h>
 #include <stdbool.h>
 #include <stddef.h>  // size_t
-#include <sys/types.h>  // off_t
+#include <sys/stat.h>
+#include <sys/types.h>  // off_t | ssize_t
 
 // Structure for each extension
 typedef struct Extension
@@ -18,6 +19,7 @@ typedef struct Extension
 
 // Prototypes
 char *get_valid_directory(const char *path);
+char *get_valid_destination(const char *path);
 char *formatted_output(off_t total_size);
 const char *get_clean_extension(const char *name);
 Extension *get_all_extensions(char *exts, size_t *ext_count);
@@ -27,5 +29,7 @@ off_t get_size(char *size);
 const char *get_suffix(char newpath[], const char *base_dir);
 bool get_answer(const char *prompt);
 int check_path_name_size(char *dst, size_t len, const char *prefix, const char *suffix);
+bool file_needs_backup(struct stat *st_src, const char *dst_dir);
+int copy_file(const char *src_path, const char *dst_path);
 
 #endif

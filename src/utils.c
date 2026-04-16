@@ -3,11 +3,12 @@
 // Libraries
 #include <ctype.h>
 #include <errno.h>
+#include <fcntl.h>  // open()
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <sys/stat.h>
+#include <unistd.h>  // close()
 
 // Headers
 #include "cli_opts.h"
@@ -49,6 +50,72 @@ char *get_valid_directory(const char *path)
     }
 
     return base_dir;
+}
+
+// Creates destination directory
+char *get_valid_destination(const char *path)
+{
+    // Checks for valid directory
+    if (!path || path[0] == '\0')
+    {
+        errno = ENOTDIR;
+        fprintf(stderr, "Error accessing diretory %s: %s\n", path, strerror(errno));
+        return NULL;
+    }
+
+    // Copies original path
+    char *cpy_path = strdup(path);
+    if (!cpy_path)
+    {
+        fprintf(stderr, "Error duplicating diretory %s: %s\n", path, strerror(errno));
+        return NULL;
+    }
+
+    // Creates starting path
+    char current_path[PATH_MAX];
+    current_path[0] = '.';
+    current_path[1] = '\0';
+    if (cpy_path[0] == '/')
+    {
+        current_path[0] = '/';
+    }
+
+    // Iterates through every directory
+    char *token = strtok(cpy_path, "/");
+    while (token != NULL)
+    {
+        // Creates new path
+        char new_path[PATH_MAX];
+        if (check_path_name_size(new_path, sizeof(new_path), current_path, token) == -1)
+        {
+            free(cpy_path);
+            fprintf(stderr, "Path too long: %s\n", strerror(errno));
+            return NULL;
+        }
+
+        // Creates directory
+        if (mkdir(new_path, 0755) != 0)
+        {
+            if (errno != EEXIST)
+            {
+                free(cpy_path);
+                fprintf(stderr, "Error on mkdir(): %s\n", strerror(errno));
+                return NULL;
+            }
+        }
+
+        // Updates current path for recursiveness
+        if (check_path_name_size(current_path, sizeof(current_path), new_path, NULL) == -1)
+        {
+            free(cpy_path);
+            fprintf(stderr, "Path too long: %s\n", strerror(errno));
+            return NULL;
+        }
+        token = strtok(NULL, "/");
+    }
+
+    free(cpy_path);
+    return strdup(current_path);
 }
 
 // Prints a more readable output message
@@ -283,4 +350,61 @@ int check_path_name_size(char *dst, size_t len, const char *prefix, const char *
     }
 
     return 0;
+}
+
+// Compares source and destiny files
+bool file_needs_backup(struct stat *st_src, const char *dst_dir)
+{
+    // File doesn't exist on destiny directory
+    struct stat st_dst;
+    if (stat(dst_dir, &st_dst) != 0)
+    {
+        return true;
+    }
+
+    // Checks for changes in file (mtim | size)
+    if (st_src->st_mtim.tv_sec != st_dst.st_mtim.tv_sec ||  // Compares seconds
+        st_src->st_mtim.tv_nsec != st_dst.st_mtim.tv_nsec)  // Compares nanoseconds
+    {
+        return true;
+    }
+
+    if (st_src->st_size != st_dst.st_size)
+    {
+        return true;
+    }
+
+    return false;
+}
+
+// Copies file from one directory to another
+int copy_file(const char *src_path, const char *dst_path)
+{
+
+    int input = open(src_path, O_RDONLY);
+    if (input < 0)
+    {
+        return -1;
+    }
+
+    int output = open(dst_path, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if (output < 0)
+    {
+        close(input);
+        return -1;
+    }
+
+    off_t offset = 0;
+    ssize_t ret;
+    const size_t chunk = 1UL << 21;
+
+    while ((ret = copy_file_range(input, &offset, output, NULL, chunk, 0)) > 0)
+    {
+        // Loop keeps running while there is data to be copied
+    }
+
+    close(input);
+    close(output);
+
+    return (ret == 0) ? 0 : -1;
 }
