@@ -2,23 +2,23 @@
 
 
 ## New features
-- [ ] Implement `list` feature
 - [ ] `list` feature → also prints in horizontal direction
-- [ ] Implement `backup` feature
-- [-] Implement `help` feature
 - [ ] Implement `log` feature
-- [ ] Implement `restore` feature
+- [ ] Implement `copy` feature
 - [ ] Helper function to get full path from a file/directory
 - [ ] Add more fields in the `search` feature output
+- [ ] `backup` feature → add hidden marker by file to prevent recovering of files that weren't backed up
+- [ ] Improve error codes (`error_code.h`) to embrace every possible error
 
 
 ## Refactoring tasks
-- [ ] Change `validade_command` to use `for` loop instead of `bsearch()`
+- [ ] Change `validate_command()` to use `for` loop instead of `bsearch()`
 - [ ] Fix `validate_args()` with new max/min commands allowed
 - [ ] Refactor flags checker (boilerplate in the beggining of each `CMD_element()` function)
 - [ ] Change type checker to use `d_type` as default and `struct stat` as fallback
 - [ ] Modular function to create and validate path
 - [ ] Change content retriever (`struct dirent`) to remove boilerplate
+
 
 ## Testing
 
@@ -35,6 +35,7 @@
 - [x] `list` feature → allow `argv[4]` as ASC and DESC order
 - [x] Descentralize `commands.h` and create a `.h` file for each functionality
 - [x] Use `getopt_long()` to allow flexible CLI arguments
+- [x] Implement `list` feature
 - [x] Implement help flag for `list` functionality
 - [x] Improve directory validation and kept `.` as default
 - [x] Implement `search` feature
@@ -58,3 +59,9 @@
 - [x] Refactor parsers to segregate into 3 more parsers, one for each common structure
 - [x] Implement `rename` feature
 - [x] Improve `recursive` flag on `list` feature
+- [x] Fix error code on parsers
+- [x] Fix error code on all files
+- [x] Improve parser output message for invalid or not allowed flag
+- [x] Implement `backup` feature
+- [x] Implement `recover` feature
+- [x] Implement `help` feature

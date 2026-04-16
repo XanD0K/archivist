@@ -8,6 +8,30 @@
 **Progress**
 
 
+## [2026-04-15]
+**Plans**
+- Implement `backup` feature
+- Implement `recover` feature
+- Remove boilerplates
+- Improve error and parser outputs
+
+**Challenges**
+- Bitwise operators
+
+**Progress**
+- Improved error code by using a `enum` type, instead of hardcoding each error, which keeps code cleaner
+- Improved CLI arguments parsers output by preventing code running with unsupported flag. First idea was to do a for loop and check if given flag is a supported flag for that feature. Grok (xAi) suggested to use bitmasks and bitwise operators to define wich flags are allowed in each feature. Proceeded with that second idea: gave each flag a bitmask and defined in each feature a `uint32_t` variable with all supported flags. Now, even though the feature has the unsupported flag in its structure, the bitwise operation inside general parsers will check the flag and display an error message if unsupported, improving UX
+- To implement `backup` and `recover` features, I first had the idea to use `FILE *` + `fread() | fwrite()` and copy bytes by bytes, which was the only way I knew how to do. Grok (xAi) suggested the usage of `copy_file_range()`, which was a better and more modern way of copying files. I follow that idea, which would be a great opportunity to learn a new way of handling files:
+    - https://man7.org/linux/man-pages/man2/copy_file_range.2.html
+    - https://manual.cs50.io/2/copy_file_range
+    - https://man7.org/linux/man-pages/man3/open.3p.html
+    - https://man7.org/linux/man-pages/man3/close.3p.html
+- I first decided to do an incremental backup, which would only trigger for files that were modified. To do this, first checks file's existence on destination directory, than compare `st_mtim` and `st_size`, to check for changes. It still has a corner case that leads to orphan files: if the name of the file is modified, the program won't recognize this change, will create a new backup, and the first backed up file (the one with the old name) will have no relation to the file in the source directory. I could create a function that makes hashes for each file, and I could just compare the hashes from source and destination directories, but that will be something to do later.
+- I then faced a logic issue: the `recover` feature would work just like a "copy" feature, where files could just be copied from any directory. To solve this, I decided to add a hidden marked file (`.archivist-backup`) to the destination directory, which would define that directory as the holder of backed up files. It happens right after `backup` finishes traversing all files. Now, the `recover` feature shall only work if the source directory (destination directory when backing up) has that hidden marked file. It still has one problem: user could just manually transfer files from any directory to the backed up directory, and use the `recover` feature. Later I'll add a hidden marked file for each file in the directory, which will prevent this behavior.
+- `recover` feature was just a simplier version of the `backup` feature, with almost no flags and that uses the same functions. It was an easy implementation.
+- `backup` and `recover` features successfully implemented
+
+
 ## [2026-04-11]
 **Plans**
 - Implement `rename` feature

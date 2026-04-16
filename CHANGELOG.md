@@ -10,6 +10,19 @@
 ### Removed
 
 
+## [0.7.0] - 2026-04-15
+### Added
+- Created `error_code.h` file to store a `enum` type that stores all error's codes
+- Implemented `backup` feature
+- Implemented `recover` feature
+
+### Changed
+- Improved general parsers with bitmasks (`cli_opts.h`)
+
+### Fixed
+- Changed parsers and handler functions to output `ErrorCode` created type
+
+
 ## [0.6.0] - 2026-04-11
 ### Added
 - Created `CommandContext` structure and `setup_command()` to remove initial boilerplate on most commands' initialization
