@@ -11,7 +11,7 @@
 // Type/Alias
 typedef ErrorCode (*CommandHandler)(int argc, char **argv, int min_args);
 typedef void (*PrintHelp)(void);
-typedef int (*ParseOptions)(int argc, char **argv, int opt_start, void *opts_out);
+typedef ErrorCode (*ParseOptions)(int argc, char **argv, int opt_start, void *opts_out);
 
 // Structure for each command in the table
 typedef struct
