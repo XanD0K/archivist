@@ -1,17 +1,19 @@
 #define _GNU_SOURCE
+#define _FILE_OFFSET_BITS 64  // Forces off_t to be 64 bits
 
 // Libraries
 #include <ctype.h>
+#include <dirent.h>
 #include <errno.h>
 #include <getopt.h>
-#include <inttypes.h>
-#include <limits.h>
+#include <inttypes.h>  // intmax_t
+#include <limits.h>  // PATH_MAX
 #include <stdint.h>  // uint32_t
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
-#include <sys/types.h>
 #include <unistd.h>
 
 // Headers
@@ -24,8 +26,7 @@
 
 // Prototypes
 static void list_element(struct dirent *namelist, const char *base_dir, const char *current_path,
-                         size_t *f_counter, size_t *dir_counter, size_t *slink_counter, size_t *err_counter,
-                          off_t *total_size, SortFlag sorter, ListOptions *opts);
+                         ListCounters *counters, SortFlag sorter, ListOptions *opts);
 
 // Setup logic for 'list' feature
 ErrorCode handle_list(int argc, char **argv, int min_args)
@@ -56,7 +57,8 @@ ErrorCode handle_list(int argc, char **argv, int min_args)
     SortFlag sorter = cmp_name_scandir;
     if (opts->base.sort && strcasecmp(opts->base.sort, "name") != 0)
     {
-        const char *sorts[] = {"date", "extension", "name", "size", "version"};
+        // All sort methods available
+        const char *sorts[] = {"date", "extension", "size", "version"};
         size_t len = sizeof(sorts)/sizeof(sorts[0]);
         
         // Updates sorter function
@@ -69,8 +71,8 @@ ErrorCode handle_list(int argc, char **argv, int min_args)
     }
 
     // Gets directory's content
-    struct dirent **namelist;
-    int n = scandir(context->base_dir, &namelist, NULL, sorter);
+    struct dirent **namelist = NULL;
+    int n = scandir(context->base_dir, &namelist, scandir_no_dot_filter, sorter);
     if (n == -1)
     {
         fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
@@ -78,49 +80,38 @@ ErrorCode handle_list(int argc, char **argv, int min_args)
         return EC_SCANDIR_ERROR;
     }
 
-    // Initializes counters
-    size_t f_counter = 0, dir_counter = 0, slink_counter = 0, err_counter = 0;
-    off_t total_size = 0;
+
+    ListCounters counters = {0};
 
     for (int i = 0; i < n; i++)
     {
-        if (strcmp(namelist[i]->d_name, ".") != 0 && strcmp(namelist[i]->d_name, "..") != 0)
-        {
-            if (!opts->base.recursive)
-            {
-                // Prints file's name
-                printf("%s\n", namelist[i]->d_name);
-            }
-            // Recursively checks directory elements and updates counters
-            list_element(namelist[i], context->base_dir, context->base_dir, &f_counter, &dir_counter,
-                         &slink_counter, &err_counter, &total_size, sorter, opts);
-        }
-        
-        free(namelist[i]);
+        // Recursively checks directory elements and updates counters
+        list_element(namelist[i], context->base_dir, context->base_dir, &counters, sorter, opts);
     }
+    free_dirent(namelist, n);
 
-    free(namelist);
-
-    // Prints f_counter, dir_counter slink_counter and total_size variables
+    // Prints counter variables
     printf("Directories: %zu\n"
            "Files: %zu\n"
-           "Simbolic Links: %zu\n", dir_counter, f_counter, slink_counter);
+           "Symbolic Links: %zu\n"
+           "Other: %zu\n",
+           counters.directories, counters.files, counters.slinks, counters.others);
     
     if (opts->base.human_readable)
     {
-        char *f_out = formatted_output(total_size);
+        char *f_out = formatted_output(counters.total_size);
         printf("Total size: %s\n", f_out);
         free(f_out);
     }
     else
     {
-        printf("Total size: %jd bytes\n", (intmax_t)(total_size));
+        printf("Total size: %jd bytes\n", (intmax_t)(counters.total_size));
     }
-    if (err_counter != 0)
+    if (counters.errors != 0)
     {
-        printf("(Finished listing with %zu erros)\n", err_counter);
+        printf("(Finished listing with %zu erros)\n", counters.errors);
         free_command_context(context);
-        return EC_LIST_FEATURE;
+        return EC_LIST_FEATURE_ERROR;
     }
 
     free_command_context(context);
@@ -132,15 +123,12 @@ ErrorCode parse_list_opts(int argc, char **argv, int opt_start, void *opts_out)
 {
     // Declares structure
     ListOptions *opts = (ListOptions*)opts_out;
+    opts->base.sort = "name";
 
     uint32_t supported_flags = COMMON_HUMAN_READABLE |
                                COMMON_IGNORE_CASE |
                                COMMON_RECURSIVE |
                                COMMON_SORT;
-
-    // Sets default values
-    opts->base.sort = "name";
-    opts->base.ignore_case = true;
 
     ErrorCode ret = parse_common_opts(argc, argv, opt_start, &opts->base, supported_flags);
     if (ret != EC_SUCCESS)
@@ -148,43 +136,34 @@ ErrorCode parse_list_opts(int argc, char **argv, int opt_start, void *opts_out)
         return ret;
     }
 
-    // Sets array of flags
     static struct option long_opts[] =
     {
         {"reverse", no_argument, 0, 'r'},
-        {"dir-first", no_argument, 0, 0},
+        {"dir-first", no_argument, 0, 'D'},
         {NULL, 0, NULL, 0}
     };
 
     int opt = 0;
     int long_index = 0;
-    char *short_opts = "r";
+    char *short_opts = "rD";
 
-    // Defines starting index to search for arguments
     optind = opt_start;
 
     while ((opt = getopt_long(argc, argv, short_opts, long_opts, &long_index)) != -1)
     {
         switch (opt)
         {
-            // Reverse
-            case 'r':
+            case 'r':  // reverse
             {
                 opts->reverse = true;
                 break;
             }
-            // Long arguments
-            case 0:
+            case 'D':  // dir-first
             {
-                if (strcmp(long_opts[long_index].name, "dir-first") == 0)
-                {
-                    opts->dir_first = true;
-                }
-
+                opts->dir_first = true;
                 break;
             }
-            // Error
-            case '?':
+            case '?':  // Error
             {
                 fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
                 return EC_PARSE_ERROR;
@@ -197,77 +176,92 @@ ErrorCode parse_list_opts(int argc, char **argv, int opt_start, void *opts_out)
 
 // Lists current element and updates counters
 static void list_element(struct dirent *namelist, const char *base_dir, const char *current_path,
-                         size_t *f_counter, size_t *dir_counter, size_t *slink_counter, size_t *err_counter,
-                          off_t *total_size, SortFlag sorter, ListOptions *opts)
+                         ListCounters *counters, SortFlag sorter, ListOptions *opts)
 {
-    // Prevents infinity loop
-    if (strcmp(namelist->d_name, ".") == 0 || strcmp(namelist->d_name, "..") == 0)
-    {
-        return;
-    }
-
     // Builds full path to current element
-    char new_path[PATH_MAX];
-    if (check_path_name_size(new_path, sizeof(new_path), current_path, namelist->d_name) == -1)
+    char full_path[PATH_MAX];
+    if (check_path_name_size(full_path, sizeof(full_path), current_path, namelist->d_name) == -1)
     {
-        (*err_counter)++;
+        counters->errors++;
+        fprintf(stderr, "Path too long: %s/%s\n", current_path, namelist->d_name);
         return;
     }
 
-    // Gets element's data
-    struct stat st;
-    if (stat(new_path, &st) != 0)
+    // Prints file's name
+    const char *suffix = get_suffix(full_path, base_dir);
+    printf("%s\n", suffix);
+
+    // Checks for directory type
+    bool is_dir = (namelist->d_type == DT_DIR);
+    bool is_file = (namelist->d_type == DT_REG);
+    bool is_slink = (namelist->d_type == DT_LNK);
+
+    if (namelist->d_type == DT_UNKNOWN || (!is_dir && !is_file && !is_slink))
     {
-        fprintf(stderr, "Couldn't access %s: %s\n", new_path, strerror(errno));
-        (*err_counter)++;
-        return;
+        // Gets element's data
+        struct stat st;
+        if (lstat(full_path, &st) != 0)
+        {
+            counters->errors++;
+            fprintf(stderr, "Couldn't access %s: %s\n", full_path, strerror(errno));
+            return;
+        }
+        is_dir = S_ISDIR(st.st_mode);
+        is_file = S_ISREG(st.st_mode);
+        is_slink = S_ISLNK(st.st_mode);
     }
 
-    // ============= Files =============
-    if (S_ISREG(st.st_mode))
+    // ==================== Directories ====================
+    if (is_dir)
     {
-        (*f_counter)++;
-        *total_size += st.st_size;
-    }
-    // ============ Slinks =============
-    else if (S_ISLNK(st.st_mode))
-    {
-        (*slink_counter)++;
-    }
-    // ========== Directories ==========
-    else if (S_ISDIR(st.st_mode))
-    {
-        (*dir_counter)++;
+        counters->directories++;
 
-        // Recursivelly traverses subdirectories
+        // Recursively traverses subdirectories
         if (opts->base.recursive)
         {
-            struct dirent **entry;
-            int n = scandir(new_path, &entry, NULL, sorter);
-
+            struct dirent **entry = NULL;
+            int n = scandir(full_path, &entry, scandir_no_dot_filter, sorter);
             if (n == -1)
             {
                 fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
-                (*err_counter)++;
+                counters->errors++;
             }
-
-            for (int i = 0; i < n; i++)
+            else
             {
-                // Recursively checks directory elements and updates counters
-                list_element(entry[i], base_dir, new_path, f_counter, dir_counter, slink_counter,
-                            err_counter, total_size, sorter, opts);
-                free(entry[i]);
+                for (int i = 0; i < n; i++)
+                {
+                    // Recursively checks directory elements and updates counters
+                    list_element(entry[i], base_dir, full_path, counters, sorter, opts);
+                }
+                free_dirent(entry, n);
             }
-
-            free(entry);
         }
     }
-
-    if (opts->base.recursive)
+    // ================== Symbolic Links ===================
+    else if (is_slink)
     {
-        // Prints file's name
-        const char *suffix = get_suffix(new_path, base_dir);
-        printf("%s\n", suffix);
+        counters->slinks++;
+    }
+    // ======================= Files =======================
+    else if (is_file)
+    {
+        // Gets element's data
+        struct stat st;
+        if (stat(full_path, &st) == 0)
+        {
+            counters->files++;
+            counters->total_size += st.st_size;
+        }
+        else
+        {
+            fprintf(stderr, "Couldn't access %s: %s\n", full_path, strerror(errno));
+            counters->errors++;
+        }
+    }
+    // Fallback for other types and DT_UNKNOWN
+    else
+    {
+        counters->others++;
     }
 
     return;
