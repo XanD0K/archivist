@@ -151,3 +151,25 @@ bool match_extension(Extension *exts, size_t ext_counter, char *name)
 
     return false;
 }
+
+// Checks if names match ('search' feature)
+bool match_searched_name(const char *current_name, const char *searched, bool ignore_case)
+{
+    return (ignore_case)
+        ? (strcasestr(current_name, searched) != NULL)
+        : (strstr(current_name, searched) != NULL);
+}
+
+// Checks if extensions match ('search' feature)
+bool match_searched_extension(const char *current_name, const char *ext)
+{
+    const char *ext_name = get_clean_extension(current_name);
+    if (!ext_name || ext_name[0] == '\0')
+    {
+        return false;
+    }
+
+    const char *clean_ext = (strlen(ext) > 1 && ext[0] == '.') ? ext + 1 : ext;
+
+    return (strcasecmp(ext_name, clean_ext) == 0);
+}

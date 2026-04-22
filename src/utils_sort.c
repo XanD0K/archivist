@@ -26,15 +26,11 @@ CompareOptions cmp_opts =
 // Returns sort function based on given sort method
 SortFlag get_sort_function(char *sort, const char **sorts, size_t len)
 {
-    for (size_t i = 0; i < len; i++)
+    if (!check_value_in_list(sort, sorts, len))
     {
-        // Invalid sort method defaults to "name"
-        if(strcasecmp(sort, sorts[i]) != 0)
-        {
-            errno = EINVAL;
-            fprintf(stderr, "Invalid sort argument: %s\n", strerror(errno));
-            return NULL;
-        }
+        errno = EINVAL;
+        fprintf(stderr, "Invalid sort argument: %s\n", strerror(errno));
+        return NULL;
     }
 
     if (strcasecmp(sort, "version") == 0)

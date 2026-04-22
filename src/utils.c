@@ -2,12 +2,14 @@
 
 // Libraries
 #include <ctype.h>
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>  // open()
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <time.h>
 #include <unistd.h>  // close()
 
 // Headers
@@ -21,6 +23,7 @@ char *get_valid_directory(const char *path)
     char *base_dir = strdup(p);
     if (!base_dir)
     {
+        fprintf(stderr, "Error on strdup() %s: %s\n", strerror(errno));
         return NULL;
     }
 
@@ -67,7 +70,7 @@ char *get_valid_destination(const char *path)
     char *cpy_path = strdup(path);
     if (!cpy_path)
     {
-        fprintf(stderr, "Error duplicating diretory %s: %s\n", path, strerror(errno));
+        fprintf(stderr, "Error on strdup() %s: %s\n", strerror(errno));
         return NULL;
     }
 
@@ -82,7 +85,7 @@ char *get_valid_destination(const char *path)
 
     // Iterates through every directory
     char *token = strtok(cpy_path, "/");
-    while (token != NULL)
+    while (token)
     {
         // Creates new path
         char new_path[PATH_MAX];
@@ -118,6 +121,11 @@ char *get_valid_destination(const char *path)
     return strdup(current_path);
 }
 
+int scandir_no_dot_filter(const struct dirent *entry)
+{
+    return (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0);
+}
+
 // Prints a more readable output message
 char *formatted_output(off_t total_size)
 {
@@ -145,7 +153,7 @@ char *formatted_output(off_t total_size)
 const char *get_clean_extension(const char *name)
 {
     const char *dot = strrchr(name, '.');
-    const char *ext = (dot != NULL) ? dot + 1 : "";
+    const char *ext = (dot) ? dot + 1 : "";
     return ext;
 }
 
@@ -167,7 +175,7 @@ Extension *get_all_extensions(char *exts, size_t *ext_counter)
     }
 
     char *token = strtok(exts_cpy, ",");
-    while (token != NULL)
+    while (token)
     {
         Extension *tmp = realloc(output_ext, (*ext_counter + 1) * sizeof(Extension));
         if (tmp == NULL)
@@ -407,4 +415,40 @@ int copy_file(const char *src_path, const char *dst_path)
     close(output);
 
     return (ret == 0) ? 0 : -1;
+}
+
+// Checks if given value is in a list of values
+bool check_value_in_list(char *name, const char *list, size_t len)
+{
+    bool found = false;
+    for (size_t i = 0; i < len; i++)
+    {
+        // Invalid sort method defaults to "name"
+        if(strcasecmp(name, list[i]) == 0)
+        {
+            found = true;
+            break;
+        }
+    }
+
+    return found;
+}
+
+// Gets current time
+void get_formatted_time(char *buffer, size_t buffer_len)
+{
+    time_t now = time(NULL);  // Current time in seconds (since 1970)
+    struct tm *tm_info = localtime(&now);  // Converts to local format
+    strftime(buffer, buffer_len, "%F %T", tm_info);
+}
+
+// Entirely frees a dirent struct
+void free_dirent(struct dirent **tmp,int len)
+{
+    for (int i = 0; i < len; i++)
+    {
+        free(tmp[i]);
+    }
+
+    free(tmp);
 }

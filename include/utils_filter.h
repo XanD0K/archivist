@@ -14,5 +14,7 @@ bool is_directory_type (const char *type);
 bool match_size(off_t max_size, off_t min_size, off_t size);
 bool match_directory_size(const char *path, off_t max_size, off_t min_size , off_t *total_size);
 bool match_extension(Extension *exts, size_t ext_counter, char *name);
+bool match_searched_name(const char *current_name, const char *searched, bool ignore_case);
+bool match_searched_extension(const char *current_name, const char *ext);
 
 #endif
