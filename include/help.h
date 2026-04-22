@@ -6,6 +6,7 @@ void handle_help(void);
 void print_backup_help(void);
 void print_delete_help(void);
 void print_list_help(void);
+void print_log_help(void);
 void print_move_help(void);
 void print_rename_help(void);
 void print_recover_help(void);
