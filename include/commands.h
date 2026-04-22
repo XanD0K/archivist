@@ -22,7 +22,7 @@ typedef struct
     int max_args;               // Maximum number of arguments
 } CommandEntry;
 
-// Structure to hande setup of each command
+// Structure to handle setup of each command
 typedef struct {
     ErrorCode error_code;
     char *base_dir;

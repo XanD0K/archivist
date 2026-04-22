@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <sys/types.h>  // ssize_t
 
 // Headers
 #include "backup.h"
@@ -12,6 +13,7 @@
 #include "delete.h"
 #include "help.h"
 #include "list.h"
+#include "log.h"
 #include "move.h"
 #include "recover.h"
 #include "rename.h"
@@ -20,10 +22,9 @@
 #include "utils.h"
 
 // Prototypes
-static ptrdiff_t validate_command(const char *cmd, const CommandEntry cmd_table[], size_t len);
-static int str_cmp(const void *a, const void *b);
-static bool validate_args(int argc, ptrdiff_t index, const CommandEntry cmd_table[]);
-static bool check_args_count(int argc, ptrdiff_t index, const CommandEntry cmd_table[]);
+static ErrorCode validate_command(const char *cmd, const CommandEntry cmd_table[], size_t len, size_t *index);
+static bool validate_args(int argc, size_t index, const CommandEntry cmd_table[]);
+static bool check_args_count(int argc, size_t index, const CommandEntry cmd_table[]);
 
 // Validades and executes commands
 ErrorCode execute_command(int argc, char **argv)
@@ -50,32 +51,30 @@ ErrorCode execute_command(int argc, char **argv)
     // Table with available commands
     const CommandEntry cmd_table[] = 
     {
-        {"backup", handle_backup, 4, 4},
+        {"backup", handle_backup, 3, 17},
         {"delete", handle_delete, 2, 18},
         {"list", handle_list, 2, 8},
+        {"log", handle_log, 2, 6},    
         {"move", handle_move, 3, 20},
-        {"recover", handle_recover, 4, 5},
+        {"recover", handle_recover, 3, 8},
         {"rename", handle_rename, 2, 18},        
         {"report", handle_report, 2, 9},
-        {"search", handle_search, 3, 11},
+        {"search", handle_search, 2, 11},
         {"tree", handle_tree, 2, 3},
         {NULL, NULL, 0, 0}
-
-        /*
-        {"log", handle_log, 2, 2},        
-        */
     };
 
     // Gets size of array
     size_t len = sizeof(cmd_table) / sizeof(cmd_table[0]) - 1;
 
     // Checks if command if valid
-    ptrdiff_t index = validate_command(argv[1], cmd_table, len);
-    if (index == -1)
+    size_t index = 0;
+    ErrorCode ret = validate_command(argv[1], cmd_table, len, &index);
+    if (ret == EC_INVALID_COMMAND)
     {
         fprintf(stderr, "Invalid command: %s!"
                         "Check available commands with: ./archivist help\n", argv[1]);
-        return EC_INVALID_COMMAND;
+        return ret;
     }
 
     // Checks number of arguments for given command
@@ -89,26 +88,28 @@ ErrorCode execute_command(int argc, char **argv)
     return handler_result;
 }
 
-// Tries to get command's index
-static ptrdiff_t validate_command(const char *cmd, const CommandEntry cmd_table[], size_t len)
+// Checks if command is valid
+static ErrorCode validate_command(const char *cmd, const CommandEntry cmd_table[], size_t len, size_t *index)
 {
-    // Binary Search in the array
-    const CommandEntry *result = bsearch(cmd, cmd_table, len, sizeof(CommandEntry), str_cmp);
+    for (size_t i = 0; i < len; i++)
+    {
+        int cmp = strcasecmp(cmd, cmd_table[i].name);
+        if (cmp == 0)
+        {
+            *index = i;
+        }
+        if (cmp < 0)
+        {
+            break;
+        }
+    }
     
-    // Returns -1 if invalid command, otherwise returns command's index
-    return (result == NULL) ? -1 : result - cmd_table;
-}
-
-// Helper function used by bsearch()
-static int str_cmp(const void *a, const void *b)
-{
-    const char *cmd_name = (const char *)a;
-    const CommandEntry *e = (const CommandEntry *)b;
-    return strcasecmp(cmd_name, e->name);
+    // Invalid command
+    return EC_INVALID_COMMAND;
 }
 
 // Checks correct number of arguments for each command
-static bool validate_args(int argc, ptrdiff_t index, const CommandEntry cmd_table[])
+static bool validate_args(int argc, size_t index, const CommandEntry cmd_table[])
 {
     const char *cmd = cmd_table[index].name;
 
@@ -116,66 +117,42 @@ static bool validate_args(int argc, ptrdiff_t index, const CommandEntry cmd_tabl
     {
         switch (index)
         {
-            // Backup
-            case 0:
+            case 0:  // Backup
+            case 5:  // Move
+            case 6:  // Recover
+            {
+                fprintf(stderr, "Usage: ./archivist backup [DIRECTORY] DIRECTORY [FLAGS]\n", cmd);
+                break;
+            }
+            case 1:  // Delete
+            case 3:  // List
+            case 7:  // Rename
+            case 8:  // Report
+            case 9:  // Search
             {
                 fprintf(stderr, "Usage: ./archivist %s [DIRECTORY] [FLAGS]\n", cmd);
                 break;
             }
-            // Delete / Search
-            case 1:
-            case 10:
-            {
-                fprintf(stderr, "Usage: ./archivist %s [DIRECTORY] [FLAGS]\n", cmd);
-                break;
-            }
-            // Duplicate / Report / Tree
-            case 2:
-            case 8:
-            case 11:
-            {
-                fprintf(stderr, "Usage: ./archivist %s [DIRECTORY]\n", cmd);
-                break;
-            }
-            // Help / Log
-            case 3:
-            case 5:
+            case 2:  // Help
             {
                 fprintf(stderr, "Usage: ./archivist %s\n", cmd);
                 break;
             }
-            // List
-            case 4:
+            case 4:  // Log
             {
-                fprintf(stderr, "Usage: ./archivist %s [DIRECTORY] [order] [revers] [recursive] [dir-first] [case-insensitive]\n"
-                                "See all flags available with: ./archivist %s -h|--help|help\n", cmd, cmd);
+                fprintf(stderr, "Usage: ./archivist %s [FLAGS]\n", cmd);
                 break;
             }
-            // Move / Restore
-            case 6:
-            case 9:
+            case 10:  // Tree
             {
-                if (strcasecmp(cmd, "move") == 0)
-                {
-                    fprintf(stderr, "Usage: ./archivist %s [SRC_DIRECTORY] DEST_DIRECTORY [name|extension|type|size]\n", cmd);
-                }
-                else
-                {
-                    fprintf(stderr, "Usage: ./archivist %s [SRC_DIRECTORY] DEST_DIRECTORY [version]\n", cmd);
-                }
-                break;
-            }
-            // Rename
-            case 7:
-            {
-                fprintf(stderr, "Usage: ./archivist %s [DIRECTORY] [filename] [place]\n", cmd);
+                fprintf(stderr, "Usage: ./archivist %s [DIRECTORY]\n", cmd);
                 break;
             }
             // Fallback
             default:
             {
-                fprintf(stderr, "Invalid command: %s!"
-                                "Check all commands available with: ./archivist help\n", cmd);
+                fprintf(stderr, "Invalid command: %s!\n"
+                        "Check all commands available with: ./archivist help\n", cmd);
             }
         }
 
@@ -186,7 +163,7 @@ static bool validate_args(int argc, ptrdiff_t index, const CommandEntry cmd_tabl
 }
 
 // Checks if number of arguments is correct for given function
-static bool check_args_count(int argc, ptrdiff_t index, const CommandEntry cmd_table[])
+static bool check_args_count(int argc, size_t index, const CommandEntry cmd_table[])
 {
     int min = cmd_table[index].min_args;
     int max = cmd_table[index].max_args;
@@ -215,20 +192,56 @@ CommandContext *setup_command(int argc, char **argv, int min_args, PrintHelp pri
     }
 
     // Defines starting values
-    const char *dir_path = NULL;
+    const char *src_path = NULL;
+    const char *dst_path = NULL;
     context->opt_start = min_args;
 
-    if (argc >= min_args + 1 && argv[min_args][0] != '-')
+    // Features that only use source directory
+    if (min_args == 2)
     {
-        dir_path = argv[min_args];
-        context->opt_start = min_args + 1;
+        if (argc > min_args && argv[min_args][0] != '-')
+        {
+            src_path = argv[min_args];
+            context->opt_start = min_args + 1;
+        }
     }
 
-    context->base_dir = get_valid_directory(dir_path);
+    // Features that use source directory and destination directory
+    else if (min_args == 3)
+    {
+        if (argc == min_args && argv[min_args - 1][0] != '-')
+        {
+            dst_path = argv[min_args - 1];
+        }
+        else if (argc > min_args && argv[min_args][0] == '-')
+        {
+            dst_path = argv[min_args - 1];
+        }
+        if (argc > min_args && argv[min_args][0] != '-')
+        {
+            src_path = argv[min_args - 1];
+            dst_path = argv[min_args];
+            context->opt_start = min_args + 1;
+        }
+    }
+
+    // Validates source directory
+    context->base_dir = get_valid_directory(src_path);
     if (!context->base_dir)
     {
         context->error_code = EC_INVALID_DIRECTORY;
         return context;
+    }
+
+    // Validates destination directory
+    if (min_args == 3)
+    {
+        context->dst_dir = get_valid_destination(dst_path);
+        if (!context->dst_dir)
+        {
+            context->error_code = EC_INVALID_DIRECTORY;
+            return context;
+        }
     }
 
     context->opts = calloc(1, opts_size);
@@ -261,6 +274,10 @@ void free_command_context(CommandContext *context)
     if (context->base_dir)
     {
         free(context->base_dir);
+    }
+    if (context->dst_dir)
+    {
+        free(context->dst_dir);
     }
     if (context->opts)
     {
