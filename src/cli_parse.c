@@ -68,7 +68,7 @@ ErrorCode parse_common_opts(int argc, char **argv, int opt_start, CommonOptions 
             }
             case '?':
             {
-                fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
+                fprintf(stderr, "Invalid flag: %s\n", argv[optind - 1]);
                 return EC_PARSE_ERROR;
             }
         }
@@ -77,7 +77,7 @@ ErrorCode parse_common_opts(int argc, char **argv, int opt_start, CommonOptions 
     return EC_SUCCESS;
 
 unsupported:
-    fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
+    fprintf(stderr, "Unsupported flag: %s\n", argv[optind - 1]);
     return EC_PARSE_ERROR_UNSUPPORTED;
 }
 
@@ -145,14 +145,13 @@ ErrorCode parse_filter_options(int argc, char **argv, int opt_start, FilterOptio
                     {
                         goto unsupported;
                     }
-                    opts->max_size = get_size(optarg);
                     opts->min_size = get_size(optarg);
                 }
                 break;
             }
             case '?':
             {
-                fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
+                fprintf(stderr, "Invalid flag: %s\n", argv[optind - 1]);
                 return EC_PARSE_ERROR;
             }
         }
@@ -166,7 +165,7 @@ ErrorCode parse_filter_options(int argc, char **argv, int opt_start, FilterOptio
     return EC_SUCCESS;
 
 unsupported:
-    fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
+    fprintf(stderr, "Unsupported flag: %s\n", argv[optind - 1]);
     return EC_PARSE_ERROR_UNSUPPORTED;
 }
 
@@ -218,7 +217,7 @@ ErrorCode parse_action_options(int argc, char **argv, int opt_start, ActionOptio
             }
             case '?':
             {
-                fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
+                fprintf(stderr, "Invalid flag: %s\n", argv[optind - 1]);
                 return EC_PARSE_ERROR;
             }
         }
@@ -227,6 +226,6 @@ ErrorCode parse_action_options(int argc, char **argv, int opt_start, ActionOptio
     return EC_SUCCESS;
 
 unsupported:
-    fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
+    fprintf(stderr, "Unsupported flag: %s\n", argv[optind - 1]);
     return EC_PARSE_ERROR_UNSUPPORTED;
 }
