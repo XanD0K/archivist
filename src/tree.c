@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#define _FILE_OFFSET_BITS 64  // Forces off_t to be 64 bits
 
 // Libraries
 #include <dirent.h>
@@ -16,9 +17,10 @@
 #include "utils.h"
 
 // Prototypes
-static void print_tree(struct dirent **namelist, char *base_dir, int n);
-static void print_branch(struct dirent *namelist, char *current_path, const char *base_dir, char *prefix, bool is_last);
-static char *concatenates_prefix(char *prefix, char *sufix);
+static void print_tree(struct dirent **namelist, const char *base_dir, int n);
+static void print_branch(const struct dirent *namelist, char *current_path,
+                         const char *base_dir, const char *prefix, bool is_last);
+static char *concatenates_prefix(const char *prefix, const char *sufix);
 
 // Setup logic for 'tree' feature
 ErrorCode handle_tree(int argc, char **argv, int min_args)
@@ -27,15 +29,19 @@ ErrorCode handle_tree(int argc, char **argv, int min_args)
     if (check_help(argc, argv[min_args]))
     {
         print_tree_help();
-        return EC_CMD_HELP_FLAG;
+        return EC_SUCCESS;
     }
 
     // Gets valid base directory (default: .)
     char *base_dir = get_valid_directory(argv[min_args]);
+    if (!base_dir)
+    {
+        return EC_INVALID_DIRECTORY;
+    }
 
     // Gets all content from directory
-    struct dirent **namelist;
-    int n = scandir(base_dir, &namelist, NULL, versionsort);
+    struct dirent **namelist = NULL;
+    int n = scandir(base_dir, &namelist, scandir_no_dot_filter, versionsort);
     if (n == -1)
     {
         free(base_dir);
@@ -49,22 +55,18 @@ ErrorCode handle_tree(int argc, char **argv, int min_args)
     return EC_SUCCESS;
 }
 
-// Prints root and defines starting point for printing branches
-static void print_tree(struct dirent **namelist, char *base_dir, int n)
+// Prints root and defines starting point for branches
+static void print_tree(struct dirent **namelist, const char *base_dir, int n)
 {
     // Prints root
     printf("%s\n", base_dir);
 
-    char *prefix = "";
+    const char *prefix = "";
 
     for (int i = 0; i < n; i++)
     {
-        if (strcmp(namelist[i]->d_name, ".") != 0 && strcmp(namelist[i]->d_name, "..") != 0)
-        {
-            bool is_last = (i == (n - 1));
-            
-            print_branch(namelist[i], base_dir, base_dir, prefix, is_last);
-        }
+        bool is_last = (i == (n - 1));
+        print_branch(namelist[i], base_dir, base_dir, prefix, is_last);
 
         free(namelist[i]);
     }
@@ -73,52 +75,54 @@ static void print_tree(struct dirent **namelist, char *base_dir, int n)
 }
 
 // Prints all content from a diretory
-static void print_branch(struct dirent *namelist, char *current_path, const char *base_dir, char *prefix, bool is_last)
+static void print_branch(const struct dirent *namelist, char *current_path,
+                         const char *base_dir, const char *prefix, bool is_last)
 {
     char *symbol = (is_last) ? "└── " : "├── ";
+    char *continuation = (is_last) ? "    " : "│   ";
 
     char new_path[PATH_MAX];
     if (check_path_name_size(new_path, sizeof(new_path), current_path, namelist->d_name) == -1)
     {
-        return;
-    }
-
-    struct stat st;
-    if (stat(new_path, &st) != 0)
-    {
-        // Fallback to just printing the element
-        printf("%s%s%s\n", prefix, symbol, namelist->d_name);
+        fprintf(stderr, "Path too long: %s/%s\n", current_path, namelist->d_name);
         return;
     }
 
     printf("%s%s%s\n", prefix, symbol, namelist->d_name);
 
-    if (S_ISDIR(st.st_mode))
+    bool is_dir = (namelist->d_type == DT_DIR);
+    if (!is_dir && namelist->d_type == DT_UNKNOWN)
+    {
+        struct stat st;
+        if (lstat(new_path, &st) == 0)
+        {
+            is_dir = S_ISDIR(st.st_mode);
+        }
+    }
+
+    if (is_dir)
     {
         struct dirent **entry;
-        int n = scandir(new_path, &entry, NULL, versionsort);
+        int n = scandir(new_path, &entry, scandir_no_dot_filter, versionsort);
         if (n == -1)
         {
             return;
         }
+
         for (int i = 0; i < n; i++)
         {
             bool child_is_last = (i == n - 1);
-            if (strcmp(entry[i]->d_name, ".") != 0 && strcmp(entry[i]->d_name, "..") != 0)
+            char *new_prefix = concatenates_prefix(prefix, continuation);
+            if (new_prefix)
             {
-                char *continuation = (is_last) ? "    " : "│   ";
-                char *new_prefix = concatenates_prefix(prefix, continuation);
-                if (!new_prefix)
-                {
-                    // Fallbacks to previous prefix
-                    print_branch(entry[i], new_path, base_dir, prefix, child_is_last);
-                }
-                else
-                {
-                    print_branch(entry[i], new_path, base_dir, new_prefix, child_is_last);
-                }
-
+                print_branch(entry[i], new_path, base_dir, new_prefix, child_is_last);
                 free(new_prefix);
+
+            }
+            else
+            {
+                // Fallbacks to previous prefix
+                print_branch(entry[i], new_path, base_dir, prefix, child_is_last);
             }
 
             free(entry[i]);
@@ -129,7 +133,7 @@ static void print_branch(struct dirent *namelist, char *current_path, const char
 }
 
 // Concatenates prefix
-static char *concatenates_prefix(char *prefix, char *sufix)
+static char *concatenates_prefix(const char *prefix, const char *sufix)
 {
     size_t prefix_len = strlen(prefix);
     size_t sufix_len = strlen(sufix);
@@ -141,8 +145,8 @@ static char *concatenates_prefix(char *prefix, char *sufix)
         return NULL;
     }
 
-    strcpy(new_prefix, prefix);
-    strcat(new_prefix, sufix);
+    memcpy(new_prefix, prefix, prefix_len);
+    memcpy(new_prefix + prefix_len, sufix, sufix_len + 1);
 
     return new_prefix;
 }
