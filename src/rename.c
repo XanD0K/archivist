@@ -1,9 +1,11 @@
 #define _GNU_SOURCE
+#define _FILE_OFFSET_BITS 64  // Forces off_t to be 64 bits
 
 // Libraries
 #include <errno.h>
 #include <dirent.h>
 #include <getopt.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,16 +18,18 @@
 #include "cli_parse.h"
 #include "commands.h"
 #include "help.h"
+#include "log.h"
 #include "rename.h"
 #include "utils.h"
 #include "utils_filter.h"
 #include "utils_sort.h"
 
 // Prototypes
-static void rename_element(struct dirent *namelist, Extension *ext, size_t ext_counter,
-                           const char *base_dir, const char *current_path, SortFlag sorter,
-                           RenameOptions *opts, size_t *current_counter);
-static char *generate_unique_name(const char *current_path, char *old_name, char *input_name, size_t *counter);
+static void rename_element(struct dirent *namelist, Extension *ext, const char *base_dir,
+                           const char *current_path, SortFlag sorter, RenameOptions *opts,
+                           RenameCounters *counters);
+static char *generate_unique_name(const char *current_path, char *old_name,
+                                  char *input_name, size_t *counter);
 
 // Setup logic for 'rename' feature
 ErrorCode handle_rename(int argc, char **argv, int min_args)
@@ -36,7 +40,6 @@ ErrorCode handle_rename(int argc, char **argv, int min_args)
     {
         return EC_MEMORY_ALLOCATION;
     }
-
     if (context->error_code != EC_SUCCESS)
     {
         free_command_context(context);
@@ -48,10 +51,13 @@ ErrorCode handle_rename(int argc, char **argv, int min_args)
     RenameOptions *opts = (RenameOptions*)context->opts;
     cmp_opts.base_dir = context->base_dir;
 
+    // Default sorter function (by name)
     SortFlag sorter = cmp_name_scandir;
-    if (opts->base.sort && strcasecmp(opts->base.sort, "name") != 0)
+    if (opts->base.sort && opts->base.sort[0] != '\0' && 
+        strcasecmp(opts->base.sort, "name") != 0)
     {
-        const char *sorts[] = {"date", "name", "size", "version"};
+        // All sort methods available
+        const char *sorts[] = {"date", "size", "version"};
         size_t len = sizeof(sorts) / sizeof(sorts[0]);
 
         // Updates sorter function
@@ -63,43 +69,59 @@ ErrorCode handle_rename(int argc, char **argv, int min_args)
         }
     }
 
+    RenameCounters counters = {0};
+    counters.name = 1;
+
     Extension *ext = NULL;
-    size_t ext_counter = 0;
     if (opts->filter.extension && opts->filter.extension[0] != '\0')
     {
-        ext = get_all_extensions(opts->filter.extension, &ext_counter);
+        ext = get_all_extensions(opts->filter.extension, &counters.ext);
         if (!ext)
         {
-            free_command_context(context);
-            errno = ENOMEM;
             fprintf(stderr, "Error on memory allocation: %s\n", strerror(errno));
+            free_command_context(context);
             return EC_MEMORY_ALLOCATION;
         }
     }
 
-    struct dirent **namelist;
-    int n = scandir(context->base_dir, &namelist, NULL, sorter);
+    // Default return value
+    ErrorCode ret = EC_SUCCESS;
+
+    // Gets directory's content
+    struct dirent **namelist = NULL;
+    int n = scandir(context->base_dir, &namelist, scandir_no_dot_filter, sorter);
     if (n == -1)
     {
-        free_extensions(ext, ext_counter);
-        free_command_context(context);
         fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
-        return EC_SCANDIR_ERROR;
+        ret = EC_SCANDIR_ERROR;
+        goto cleanup;
     }
 
-    size_t name_counter = 1;
     for (int i = 0; i < n; i++)
     {
-        if (strcmp(namelist[i]->d_name, ".") != 0 && strcmp(namelist[i]->d_name, "..") != 0)
-        {
-            rename_element(namelist[i], ext, ext_counter, context->base_dir, context->base_dir, sorter, opts, &name_counter);
-        }
+        rename_element(namelist[i], ext, context->base_dir, context->base_dir, sorter, opts, &counters);
+    }
+    free_dirent(namelist, n);
 
-        free(namelist[i]);
+    // Output Message
+    if (opts->action.dry_run)
+    {
+        printf("[DRY-RUN] Would rename %zu files\n", counters.rnmd_files);
+    }
+    else
+    {
+        printf("Renamed files: %zu\n", counters.rnmd_files);
     }
 
-    free(namelist);
-    return EC_SUCCESS;
+    if (counters.error != 0)
+    {
+        printf("(Finished with %zu errors)\n", counters.error);
+    }
+
+cleanup:
+    free_extensions(ext, counters.ext);
+    free_command_context(context);
+    return ret;
 }
 
 // Parses through CLI arguments for 'rename' functionality
@@ -176,133 +198,150 @@ ErrorCode parse_rename_options(int argc, char **argv, int opt_start, void *opts_
 }
 
 // Renames files from given directory
-static void rename_element(struct dirent *namelist, Extension *ext, size_t ext_counter,
-                           const char *base_dir, const char *current_path, SortFlag sorter,
-                           RenameOptions *opts, size_t *current_counter)
+static void rename_element(struct dirent *namelist, Extension *ext, const char *base_dir,
+                           const char *current_path, SortFlag sorter, RenameOptions *opts,
+                           RenameCounters *counters)
 {
-    if (strcmp(namelist->d_name, ".") == 0 || strcmp(namelist->d_name, "..") == 0)
-    {
-        return;
-    }
-
     char old_path[PATH_MAX];
     if (check_path_name_size(old_path, sizeof(old_path), current_path, namelist->d_name) == -1)
     {
         return;
     }
-
-    struct stat st;
-    if (stat(old_path, &st) != 0)
+    
+    bool is_dir = (namelist->d_type == DT_DIR);
+    if (!is_dir && namelist->d_type == DT_UNKNOWN)
     {
-        return;
-    }
-
-    if (S_ISDIR(st.st_mode) && opts->base.recursive)
-    {
-        struct dirent **entry;
-        int n = scandir(old_path, &entry, NULL, sorter);
-        if (n == -1)
+        struct stat st;
+        if (lstat(old_path, &st) != 0)
         {
             return;
         }
-        size_t name_counter = 1;
-        for (int i = 0; i < n; i++)
+
+        is_dir = S_ISDIR(st.st_mode);
+    }
+
+    // ==================== DIRECTORIES ====================
+    if (is_dir)
+    {
+        if (opts->base.recursive)
         {
-            rename_element(namelist, ext, ext_counter, base_dir, old_path, sorter, opts, &name_counter);
-            free(entry[i]);
+            struct dirent **entry;
+            int n = scandir(old_path, &entry, scandir_no_dot_filter, sorter);
+            if (n == -1)
+            {
+                return;
+            }
+
+            counters->name = 1;
+            for (int i = 0; i < n; i++)
+            {
+                rename_element(entry[i], ext, base_dir, old_path, sorter, opts, counters);
+            }
+            free_dirent(entry, n);
         }
-
-        free(entry);
     }
-
-    if (!S_ISREG(st.st_mode) && !S_ISLNK(st.st_mode))
-    {
-        return;
-    }
-
-    if (opts->filter.type && !match_type(opts->filter.type, st.st_mode))
-    {
-        return;
-    }
-
-    if (opts->filter.contains && opts->filter.contains[0] != '\0' &&
-        !match_name(opts->filter.contains, namelist->d_name))
-    {
-        return;
-    }
-
-    // Checks for matching extension
-    if (ext && !match_extension(ext, ext_counter, namelist->d_name))
-    {
-        return;
-    }
-
-    // Checks for size
-    if ((opts->filter.max_size || opts->filter.min_size) &&
-        !match_size(opts->filter.max_size, opts->filter.min_size, st.st_size))
-    {
-        return;
-    }
-
-    // Gets new name
-    char *new_path = generate_unique_name(current_path, namelist->d_name, opts->name, current_counter);
-    if (!new_path)
-    {
-        return;
-    }
-
-    if (opts->action.interactive)
-    {
-        char *prompt = NULL;
-        if (asprintf(&prompt, "Rename file %s? ", old_path) == -1)
-        {
-            fprintf(stderr, "Error on asprintf(): %s\n", strerror(errno));
-            free(new_path);
-            free(prompt);
-            return;
-        }
-        if (!get_answer(prompt))
-        {
-            free(new_path);
-            free(prompt);
-            return;
-        }
-
-        free(prompt);
-    }
-
-    if (opts->action.dry_run)
-    {
-        printf("[DRY-RUN] would rename file '%s' to '%s'\n", old_path, new_path);
-    }
+    // ================== FILES & SLINKS ===================
     else
     {
-        // Renames files
-        if (rename(old_path, new_path) == 0)
+        if (opts->filter.contains && opts->filter.contains[0] != '\0' &&
+            !match_name(opts->filter.contains, namelist->d_name))
         {
-            if (opts->action.verbose)
+            return;
+        }
+
+        // Checks for matching extension
+        if (ext && !match_extension(ext, counters->ext, namelist->d_name))
+        {
+            return;
+        }
+
+        // Checks for size
+        if (opts->filter.max_size || opts->filter.min_size)
+        {
+            struct stat st;
+            if (lstat(old_path, &st) != 0)
             {
-                printf("File '%s' renamed to '%s'\n", namelist->d_name, new_path);
+                fprintf(stderr, "Couldn't access %s: %s\n", old_path, strerror(errno));
+                counters->error++;
+                return;
+            }
+
+            if (!match_size(opts->filter.max_size, opts->filter.min_size, st.st_size))
+            {
+                return;
             }
         }
-    }
 
-    free(new_path);
+        // Gets new name
+        char *new_path = generate_unique_name(current_path, namelist->d_name, opts->name, counters->name);
+        if (!new_path)
+        {
+            return;
+        }
+
+        if (opts->action.interactive)
+        {
+            char *prompt = NULL;
+            if (asprintf(&prompt, "Rename file %s to %s? ", old_path, new_path) == -1)
+            {
+                fprintf(stderr, "Error on asprintf(): %s\n", strerror(errno));
+                free(new_path);
+                free(prompt);
+                return;
+            }
+            if (!get_answer(prompt))
+            {
+                free(new_path);
+                free(prompt);
+                return;
+            }
+
+            free(prompt);
+        }
+
+        if (opts->action.dry_run)
+        {
+            printf("[DRY-RUN] Would rename file '%s' to '%s'\n", old_path, new_path);
+            counters->rnmd_files++;
+        }
+        else
+        {
+            // Renames files
+            if (rename(old_path, new_path) == 0)
+            {
+                if (opts->action.verbose)
+                {
+                    printf("File '%s' renamed to '%s'\n", namelist->d_name, new_path);
+                }
+
+                update_log_file(LOG_SUCCESS, CMD_RENAME, namelist->d_name, new_path, false);
+                counters->rnmd_files++;
+            }
+            else
+            {
+                update_log_file(LOG_ERROR, CMD_RENAME, namelist->d_name, new_path, true);
+                counters->error++;
+            }
+        }
+
+        free(new_path);
+    }
 }
 
 // Defines behaviour when file already exists on destination
-static char *generate_unique_name(const char *current_path, char *old_name, char *input_name, size_t *counter)
+static char *generate_unique_name(const char *current_path, char *old_name,
+                                  char *input_name, size_t *counter)
 {
     // Default behavior: incremental rename
     const char *dot = strrchr(old_name, '.');
-    const char *valid_dot = (dot != NULL) ? dot : "";
+    const char *ext = (dot) ? dot : "";
 
     char new_name[PATH_MAX];
     char full_path[PATH_MAX];
 
     while (1)
     {
-        snprintf(new_name, sizeof(new_name), "%s_%zu%s", input_name, (*counter), valid_dot);
+        snprintf(new_name, sizeof(new_name), "%s_%zu%s", input_name, (*counter), ext);
 
         if (check_path_name_size(full_path, sizeof(full_path), current_path, new_name) == -1)
         {
