@@ -4,7 +4,7 @@
 // Libraries
 #include <errno.h>
 #include <getopt.h>
-#include <limits.h>
+#include <limits.h>  // PATH_MAX
 #include <stdint.h>  // uint32_t
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,15 +26,14 @@ static SortReport get_sort_func(char *sort);
 static int cmp_name_qsort(const void *a, const void *b);
 static int cmp_size_qsort(const void *a, const void *b);
 static int cmp_quantity_qsort(const void *a, const void *b);
-static void report_element(char *current_path, const struct dirent *namelist, ReportOptions *opts,
-                           Extension *ext, size_t *ext_counter, size_t *ext_capacity,
-                           size_t *total_files, off_t *total_size);
+static void report_element(const char *current_path, const struct dirent *namelist, ReportOptions *opts,
+                           Extension **ext, ReportCounters *counters);
 static ssize_t find_extension_in_list(const char *extension, Extension *ext, size_t ext_counter);
 static void reallocates_list(Extension **ext, size_t old_capacity);
-static void updates_list(Extension *ext, const char *extension_name, size_t ext_counter, size_t index,
-                         off_t size, size_t *total_files, off_t *total_size);
-static void print_report_output(Extension *ext, size_t ext_counter, bool human_readable,
-                                size_t total_files, off_t total_size);
+static void updates_list(Extension *ext, const char *extension_name, size_t index,
+                         off_t file_size, ReportCounters *counters);
+static void print_report_output(Extension *ext, size_t ext_counter,
+                                bool human_readable, ReportCounters counters);
 static void clear_new_elements(Extension **ext, size_t old_capacity, size_t new_capacity);
 
 // Setup logic for 'report' feature
@@ -54,35 +53,32 @@ ErrorCode handle_report(int argc, char **argv, int min_args)
             : context->error_code;
     }
 
-    // Parses CLI arguments
     ReportOptions *opts = (ReportOptions*)context->opts;
 
-    // Default sort method
+    // Default sorter function (by name)
     SortReport sorter = cmp_name_qsort;
-
-    if (opts->base.sort &&  strcasecmp(opts->base.sort, "name") != 0)
+    if (opts->base.sort && strcasecmp(opts->base.sort, "name") != 0)
     {
-        // All sort options
-        const char *sorts[] = {"name", "size", "quantity"};
+        // All sort methods available
+        const char *sorts[] = {"size", "quantity"};
         size_t len = sizeof(sorts) / sizeof(sorts[0]);
 
+        // Checks for valid sorter method
         if (!check_sort(opts->base.sort, sorts, len))
         {
             errno = EINVAL;
-            fprintf(stderr, "Invalid sort argument: %s\n"
-                            "Help for report command: ./archivist report help\n"
-                            "Usage: ./archivist report [DIRECTORY] [FLAGS]\n",
-                            strerror(errno));
+            fprintf(stderr, "Invalid sort argument: %s\n", strerror(errno));
             free_command_context(context);
             return EC_INVALID_SORTER;
         }
 
+        // Updates sorter function
         sorter = get_sort_func(opts->base.sort);
-    }    
+    }
 
     // Parse directory
-    struct dirent **namelist;
-    int n = scandir(context->base_dir, &namelist, NULL, alphasort);
+    struct dirent **namelist = NULL;
+    int n = scandir(context->base_dir, &namelist, scandir_no_dot_filter, alphasort);
     if (n == -1)
     {
         fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
@@ -90,61 +86,48 @@ ErrorCode handle_report(int argc, char **argv, int min_args)
         return EC_SCANDIR_ERROR;
     }
 
+    // Initializes counters
+    ReportCounters counters = {0};
+    counters.ext_capacity = 8;
+
+    // Default return value
+    ErrorCode ret = EC_SUCCESS;
+
     // Dynamic Array that holds every extension on directory
     Extension *ext = NULL;
-    size_t ext_counter = 0, ext_capacity = 8;
-    ext = calloc(ext_capacity, sizeof(Extension));
+    ext = calloc(counters.ext_capacity, sizeof(Extension));
     if (ext == NULL)
     {
-        errno = ENOMEM;
         fprintf(stderr, "Error on memory allocation: %s\n", strerror(errno));
-        free_command_context(context);
-        free(namelist);
-        return EC_MEMORY_ALLOCATION;
+        ret = EC_MEMORY_ALLOCATION;
+        goto cleanup;
     }
-
-    // Keeps track of quantity and size of all files
-    size_t total_files = 0;
-    off_t total_size = 0;
 
     for (int i = 0; i < n; i++)
     {
-        if (strcmp(namelist[i]->d_name, ".") != 0 && strcmp(namelist[i]->d_name, "..") != 0)
+        report_element(context->base_dir, namelist[i], opts, &ext, &counters);
+        if (ext == NULL)
         {
-            report_element(context->base_dir, namelist[i], opts, ext, &ext_counter,
-                           &ext_capacity, &total_files, &total_size);
-            if (ext == NULL)
-            {
-                errno = ENOMEM;
-                fprintf(stderr, "Error on memory allocation: %s\n", strerror(errno));
-                free_command_context(context);
-                free(namelist);
-                free_extensions(ext, ext_counter);
-                return EC_MEMORY_ALLOCATION;
-            }
+            fprintf(stderr, "Error on memory allocation: %s\n", strerror(errno));
+            ret = EC_MEMORY_ALLOCATION;
+            goto cleanup;
         }
-
-        free(namelist[i]);
     }
+    free_dirent(namelist, n);
 
-    // Retrieves user's selected extensions (-e flag)
-    size_t user_ext_counter = 0;
-    Extension *user_ext = get_all_extensions(opts->filter.extension, &user_ext_counter);    
-
+    // Retrieves user's selected extensions (-e|--extension flag)
+    Extension *user_ext = get_all_extensions(opts->filter.extension, &counters.user_ext);
     if (user_ext == NULL)
     {
-        errno = ENOMEM;
         fprintf(stderr, "Error on memory allocation: %s\n", strerror(errno));
-        free(namelist);
-        free_extensions(ext, ext_counter);
-        free_command_context(context);
-        return EC_MEMORY_ALLOCATION;
+        ret = EC_MEMORY_ALLOCATION;
+        goto cleanup;
     }
 
     // Populates user's array with data collected from the directory
-    for (size_t i = 0; i < user_ext_counter; i++)
+    for (size_t i = 0; i < counters.user_ext; i++)
     {
-        for (size_t j = 0; j < ext_counter; j++)
+        for (size_t j = 0; j < counters.ext; j++)
         {
             if (strcasecmp(user_ext[i].extension, ext[j].extension) == 0)
             {
@@ -154,22 +137,34 @@ ErrorCode handle_report(int argc, char **argv, int min_args)
         }
     }
 
-    // Sort struct arrays
-    Extension *to_print = (user_ext != NULL) ? user_ext : ext;
-    size_t print_count = (user_ext != NULL) ? user_ext_counter : ext_counter;
+    // Sorts struct arrays
+    Extension *to_print = (user_ext) ? user_ext : ext;
+    size_t print_count = (user_ext) ? counters.user_ext : counters.ext;
     qsort(to_print, print_count, sizeof(Extension), sorter);
 
     // Prints output message
-    print_report_output(to_print, print_count, opts->base.human_readable, total_files, total_size);
-
-    free_extensions(ext, ext_counter);
-    if (user_ext != NULL)
+    print_report_output(to_print, print_count, opts->base.human_readable, counters);
+    if (counters.error != 0)
     {
-        free_extensions(user_ext, user_ext_counter);
+        printf("(Finished with %zu errors)\n", counters.error);
     }
-    free(namelist);
+
+cleanup:
+    if (namelist)
+    {
+        free_dirent(namelist, n);
+    }
+    if (ext)
+    {
+        free_extensions(ext, counters.ext);
+    }
+    if (user_ext)
+    {
+        free_extensions(user_ext, counters.user_ext);
+    }
+
     free_command_context(context);
-    return EC_SUCCESS;
+    return ret;
 }
 
 // Parses through CLI arguments for 'report' functionality
@@ -211,14 +206,10 @@ static bool check_sort(char *sort, const char **sorts, size_t len)
     return false;
 }
 
-// Returns specific sort function based on chosen sort method
+// Returns specific sort function based on chosen method
 static SortReport get_sort_func(char *sort)
 {
-    if (strcasecmp(sort, "name") == 0)
-    {
-        return cmp_name_qsort;
-    }
-    else if (strcasecmp(sort, "size") == 0)
+    if (strcasecmp(sort, "size") == 0)
     {
         return cmp_size_qsort;
     }
@@ -229,10 +220,9 @@ static SortReport get_sort_func(char *sort)
 
     // Fallback
     return cmp_name_qsort;
-    
 }
 
-// Organizes by name
+// Sorts by name
 static int cmp_name_qsort(const void *a, const void *b)
 {
     const Extension *extA = (const Extension *)(a);
@@ -250,7 +240,7 @@ static int cmp_name_qsort(const void *a, const void *b)
     return (strcasecmp(extA->extension, extB->extension));
 }
 
-// Organizes by size
+// Sorts by size
 static int cmp_size_qsort(const void *a, const void *b)
 {
     const Extension *extA = (const Extension *)(a);
@@ -267,7 +257,7 @@ static int cmp_size_qsort(const void *a, const void *b)
     return 0;
 }
 
-// Organizes by quantity
+// Sorts by quantity
 static int cmp_quantity_qsort(const void *a, const void *b)
 {
     const Extension *extA = (const Extension *)(a);
@@ -277,82 +267,104 @@ static int cmp_quantity_qsort(const void *a, const void *b)
 }
 
 // Calculates porpotion of each extension on given directory
-static void report_element(char *current_path, const struct dirent *namelist, ReportOptions *opts,
-                           Extension *ext, size_t *ext_counter, size_t *ext_capacity,
-                           size_t *total_files, off_t *total_size)
+static void report_element(const char *current_path, const struct dirent *namelist, ReportOptions *opts,
+                           Extension **ext, ReportCounters *counters)
 {
-    if (strcmp(namelist->d_name, ".") == 0 || strcmp(namelist->d_name, "..") == 0)
+    // Builds full path to current element
+    char full_path[PATH_MAX];
+    if (check_path_name_size(full_path, sizeof(full_path), current_path, namelist->d_name) == -1)
     {
+        fprintf(stderr, "Path too long: %s/%s\n", current_path, namelist->d_name);
         return;
     }
 
-    char new_path[PATH_MAX];
-    if (check_path_name_size(new_path, sizeof(new_path), current_path, namelist->d_name) == -1)
+    // Checks for directory type
+    bool is_dir = (namelist->d_type == DT_DIR);
+    if (!is_dir && namelist->d_type == DT_UNKNOWN)
     {
-        return;
-    }
-
-    struct stat st;
-    if (stat(new_path, &st) != 0)
-    {
-        return;
-    }
-
-    // Checks for recursive flag
-    if (opts->base.recursive && S_ISDIR(st.st_mode))
-    {
-        struct dirent **entry;
-        int n = scandir(new_path, &entry, NULL, alphasort);
-        if (n == -1)
+        struct stat st;
+        if (lstat(full_path, &st) != 0)
         {
+            fprintf(stderr, "Couldn't access %s: %s\n", full_path, strerror(errno));
+            counters->error++;
             return;
         }
-        for (int i = 0; i < n; i++)
-        {
-            report_element(new_path, entry[i], opts, ext, ext_counter,
-                           ext_capacity, total_files, total_size);
-            free(entry[i]);
-        }
 
-        free(entry);
+        is_dir = S_ISDIR(st.st_mode);
     }
 
-    // Ignores directories
-    if (S_ISDIR(st.st_mode))
+    // ==================== Directories ====================
+    if (is_dir)
     {
+        // Recursively traverses subdirectories
+        if (opts->base.recursive)
+        {
+            struct dirent **entry;
+            int n = scandir(full_path, &entry, scandir_no_dot_filter, alphasort);
+            if (n == -1)
+            {
+                fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
+                counters->error++;
+                return;
+            }
+            for (int i = 0; i < n; i++)
+            {
+                report_element(full_path, entry[i], opts, ext, counters);
+                if (*ext == NULL)
+                {
+                    free_dirent(entry, n);
+                    return;
+                }
+            }
+
+            free_dirent(entry, n);
+        }
+
         return;
     }
 
+    // ======================= Files =======================
     // Gets extension for current element
     const char *extension_name = get_clean_extension(namelist->d_name);
     // Checks if extension already exists
-    ssize_t index = find_extension_in_list(extension_name, ext, *ext_counter);
+    ssize_t index = find_extension_in_list(extension_name, *ext, counters->ext);
+
+    // Gets element's data
+    struct stat st;
+    if (lstat(full_path, &st) != 0)
+    {
+        fprintf(stderr, "Couldn't access %s: %s\n", full_path, strerror(errno));
+        counters->error++;
+        return;
+    }
+
     // Current extension doesn't exist in list
     if (index == -1)
     {
         // Checks necessity of realloc (factor 0.75)
-        float factor = (float)*ext_counter / (float)*ext_capacity;        
+        float factor = (float)counters->ext / (float)counters->ext_capacity;        
         if (factor >= 0.75f)
         {
             // Reallocates memory for new entry
-            reallocates_list(&ext, *ext_capacity);
-            if (ext == NULL)
+            reallocates_list(ext, counters->ext_capacity);
+            if (*ext == NULL)
             {
+                fprintf(stderr, "Error on realloc(): %s\n", strerror(errno));
+                counters->error++;
                 return;
             }
             // Doubles list's capacity
-            *ext_capacity *= 2;
+            counters->ext_capacity *= 2;
         }
         // Adds new extension to list
-        updates_list(ext, extension_name, *ext_counter, *ext_counter,
-                     st.st_size, total_files, total_size);
+        updates_list(*ext, extension_name, counters->ext, st.st_size, counters);
         // Increments extension's counter
-        (*ext_counter)++;
+        counters->ext++;
     }
+    // Extension already exists in list (updates values)
     else
     {
-        updates_list(ext, extension_name, *ext_counter, (size_t)index,
-                     st.st_size, total_files, total_size);
+        updates_list(*ext, extension_name, (size_t)index, st.st_size, counters);
     }
 
     return;
@@ -390,11 +402,11 @@ static void reallocates_list(Extension **ext, size_t old_capacity)
 }
 
 // Updates list of extensions
-static void updates_list(Extension *ext, const char *extension_name, size_t ext_counter, size_t index,
-                         off_t size, size_t *total_files, off_t *total_size)
+static void updates_list(Extension *ext, const char *extension_name, size_t index,
+                         off_t file_size, ReportCounters *counters)
 {
     // Adding new entry
-    if (index == ext_counter)
+    if (index == counters->ext)
     {
         ext[index].extension = (strcmp(extension_name, "") == 0)
             ? strdup("others")
@@ -404,24 +416,23 @@ static void updates_list(Extension *ext, const char *extension_name, size_t ext_
     }
     // Updating existed entry
     ext[index].file_count++;
-    ext[index].size += size;
+    ext[index].size += file_size;
 
-    (*total_files)++;
-    (*total_size) += size;
+    counters->total_files++;
+    counters->total_size += file_size;
 }
 
 // Prints output message with percentage for each extension
-static void print_report_output(Extension *ext, size_t ext_counter, bool human_readable,
-                                size_t total_files, off_t total_size)
+static void print_report_output(Extension *ext, size_t ext_counter, bool human_readable, ReportCounters counters)
 {
     const float percentage = 100.0f;
     for (size_t i = 0; i < ext_counter; i++)
     {
-        float file_percentage = (total_files > 0)
-            ? (float)ext[i].file_count / (float)total_files * percentage
+        float file_percentage = (counters.total_files > 0)
+            ? (float)ext[i].file_count / (float)counters.total_files * percentage
             : 0.0f;
-        float size_percentage = (total_size > 0)
-            ? (float)ext[i].size / (float)total_size * percentage
+        float size_percentage = (counters.total_size > 0)
+            ? (float)ext[i].size / (float)counters.total_size * percentage
             : 0.0f;
         if (human_readable)
         {
@@ -450,3 +461,4 @@ static void clear_new_elements(Extension **ext, size_t old_capacity, size_t new_
         (*ext)[i].size = 0;
     }
 }
+
