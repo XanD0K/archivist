@@ -93,6 +93,10 @@ ErrorCode handle_report(int argc, char **argv, int min_args)
     // Default return value
     ErrorCode ret = EC_SUCCESS;
 
+    // Initializes variables
+    Extension *user_ext = NULL;
+
+
     // Dynamic Array that holds every extension on directory
     Extension *ext = NULL;
     ext = calloc(counters.ext_capacity, sizeof(Extension));
@@ -116,7 +120,7 @@ ErrorCode handle_report(int argc, char **argv, int min_args)
     free_dirent(namelist, n);
 
     // Retrieves user's selected extensions (-e|--extension flag)
-    Extension *user_ext = get_all_extensions(opts->filter.extension, &counters.user_ext);
+    user_ext = get_all_extensions(opts->filter.extension, &counters.user_ext);
     if (user_ext == NULL)
     {
         fprintf(stderr, "Error on memory allocation: %s\n", strerror(errno));

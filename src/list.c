@@ -46,7 +46,6 @@ ErrorCode handle_list(int argc, char **argv, int min_args)
     }
 
     ListOptions *opts = (ListOptions*)context->opts;
-
     // Redefines values for comparation variables
     cmp_opts.reverse = (opts->reverse) ? -1 : 1;
     cmp_opts.dir_first = opts->dir_first;
@@ -55,7 +54,8 @@ ErrorCode handle_list(int argc, char **argv, int min_args)
 
     // Default sorter function (by name)
     SortFlag sorter = cmp_name_scandir;
-    if (opts->base.sort && strcasecmp(opts->base.sort, "name") != 0)
+    if (opts->base.sort && opts->base.sort[0] != '\0' && 
+        strcasecmp(opts->base.sort, "name") != 0)
     {
         // All sort methods available
         const char *sorts[] = {"date", "extension", "size", "version"};
@@ -79,7 +79,6 @@ ErrorCode handle_list(int argc, char **argv, int min_args)
         free_command_context(context);
         return EC_SCANDIR_ERROR;
     }
-
 
     ListCounters counters = {0};
 

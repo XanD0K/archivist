@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <getopt.h>
 #include <limits.h>
+#include <stddef.h>  //ptrdiff_t
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -95,7 +96,7 @@ static LogOptions parse_log_opts(int argc, char **argv, int opt_start)
     };
 
     int opt = 0, long_index = 0;
-    char *short_opts = 'l:C:';
+    char *short_opts = "l:C:";
 
     optind = opt_start;
     while((opt = getopt_long(argc, argv, short_opts, long_opts, &long_index)) != -1)
@@ -247,9 +248,9 @@ static bool check_cmd_line(const char *cmd)
     }
 
     // Compares given command with line's command
-    size_t len = end - start;
-    if (strlen(cmd) == len && 
-        strncasecmp(start, cmd, len) == 0)
+    ptrdiff_t len = end - start;
+    if (strlen(cmd) == (size_t)len && 
+        strncasecmp(start, cmd, (size_t)len) == 0)
     {
         return true;
     }

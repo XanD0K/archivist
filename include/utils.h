@@ -32,7 +32,7 @@ bool get_answer(const char *prompt);
 int check_path_name_size(char *dst, size_t len, const char *prefix, const char *suffix);
 bool file_needs_backup(struct stat *st_src, const char *dst_dir);
 int copy_file(const char *src_path, const char *dst_path);
-bool check_value_in_list(char *name, const char *list, size_t len);
+bool check_value_in_list(char *name, const char *list[], size_t len);
 void get_formatted_time(char *timestamp, size_t len);
 void free_dirent(struct dirent **tmp,int len);
 

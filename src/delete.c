@@ -5,7 +5,7 @@
 #include <dirent.h>
 #include <errno.h>
 #include <getopt.h>
-#include <inttypes.h>
+#include <inttypes.h>  // intmax_t
 #include <limits.h>  // PATH_MAX
 #include <stdbool.h>
 #include <stdint.h>  // uint32_t

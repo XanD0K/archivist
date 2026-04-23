@@ -18,7 +18,7 @@
 
 // Prototypes
 static void print_tree(struct dirent **namelist, const char *base_dir, int n);
-static void print_branch(const struct dirent *namelist, char *current_path,
+static void print_branch(const struct dirent *namelist, const char *current_path,
                          const char *base_dir, const char *prefix, bool is_last);
 static char *concatenates_prefix(const char *prefix, const char *sufix);
 
@@ -75,7 +75,7 @@ static void print_tree(struct dirent **namelist, const char *base_dir, int n)
 }
 
 // Prints all content from a diretory
-static void print_branch(const struct dirent *namelist, char *current_path,
+static void print_branch(const struct dirent *namelist, const char *current_path,
                          const char *base_dir, const char *prefix, bool is_last)
 {
     char *symbol = (is_last) ? "└── " : "├── ";

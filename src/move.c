@@ -61,8 +61,8 @@ ErrorCode handle_move(int argc, char **argv, int min_args)
         if (!ext)
         {
             fprintf(stderr, "Error on memory allocation: %s\n", strerror(errno));
-            ret = EC_MEMORY_ALLOCATION;
-            goto cleanup;
+            free_command_context(context);
+            return EC_MEMORY_ALLOCATION;
         }
     }
     
@@ -92,6 +92,11 @@ ErrorCode handle_move(int argc, char **argv, int min_args)
     {
         printf("Moved files: %zu\n"
                "Created directories: %zu\n", counters.moved_files, counters.moved_directories);
+    }
+
+    if (counters.error != 0)
+    {
+        printf("(Finished with %zu errors)\n", counters.error);
     }
 
 cleanup:
@@ -324,6 +329,8 @@ static void move_element(char *current_path, char *dst_dir, MoveOptions *opts,
             int n = scandir(full_path, &entry, scandir_no_dot_filter, alphasort);
             if (n == -1)
             {
+                fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
+                counters->error++;
                 return;
             }
 

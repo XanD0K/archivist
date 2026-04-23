@@ -23,7 +23,7 @@ char *get_valid_directory(const char *path)
     char *base_dir = strdup(p);
     if (!base_dir)
     {
-        fprintf(stderr, "Error on strdup() %s: %s\n", strerror(errno));
+        fprintf(stderr, "Error on strdup(): %s\n", strerror(errno));
         return NULL;
     }
 
@@ -31,7 +31,7 @@ char *get_valid_directory(const char *path)
     // Tries to fill st with directory's data
     if (stat(base_dir, &st) != 0)
     {
-        fprintf(stderr, "Error in stat() for %s: %s\n", p, strerror(errno));
+        fprintf(stderr, "Error in stat(): %s\n", strerror(errno));
         free(base_dir);
         return NULL;
     }
@@ -70,7 +70,7 @@ char *get_valid_destination(const char *path)
     char *cpy_path = strdup(path);
     if (!cpy_path)
     {
-        fprintf(stderr, "Error on strdup() %s: %s\n", strerror(errno));
+        fprintf(stderr, "Error on strdup(): %s\n", strerror(errno));
         return NULL;
     }
 
@@ -418,7 +418,7 @@ int copy_file(const char *src_path, const char *dst_path)
 }
 
 // Checks if given value is in a list of values
-bool check_value_in_list(char *name, const char *list, size_t len)
+bool check_value_in_list(char *name, const char *list[], size_t len)
 {
     bool found = false;
     for (size_t i = 0; i < len; i++)

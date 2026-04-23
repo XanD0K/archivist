@@ -205,6 +205,7 @@ static void rename_element(struct dirent *namelist, Extension *ext, const char *
     char old_path[PATH_MAX];
     if (check_path_name_size(old_path, sizeof(old_path), current_path, namelist->d_name) == -1)
     {
+        fprintf(stderr, "Path too long: %s/%s\n", current_path, namelist->d_name);
         return;
     }
     
@@ -214,6 +215,8 @@ static void rename_element(struct dirent *namelist, Extension *ext, const char *
         struct stat st;
         if (lstat(old_path, &st) != 0)
         {
+            fprintf(stderr, "Couldn't access %s: %s\n", old_path, strerror(errno));
+            counters->error++;
             return;
         }
 
@@ -273,7 +276,7 @@ static void rename_element(struct dirent *namelist, Extension *ext, const char *
         }
 
         // Gets new name
-        char *new_path = generate_unique_name(current_path, namelist->d_name, opts->name, counters->name);
+        char *new_path = generate_unique_name(current_path, namelist->d_name, opts->name, &counters->name);
         if (!new_path)
         {
             return;

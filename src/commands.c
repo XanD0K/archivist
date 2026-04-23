@@ -121,7 +121,7 @@ static bool validate_args(int argc, size_t index, const CommandEntry cmd_table[]
             case 5:  // Move
             case 6:  // Recover
             {
-                fprintf(stderr, "Usage: ./archivist backup [DIRECTORY] DIRECTORY [FLAGS]\n", cmd);
+                fprintf(stderr, "Usage: ./archivist %s [DIRECTORY] DIRECTORY [FLAGS]\n", cmd);
                 break;
             }
             case 1:  // Delete
