@@ -2,28 +2,24 @@
 
 
 ## New features
-- [ ] `list` feature → also prints in horizontal direction
-- [ ] Implement `log` feature
-- [ ] Implement `copy` feature
+- [ ] `list` feature → also prints in horizontal direction (like `ls` command)
 - [ ] Helper function to get full path from a file/directory
-- [ ] Add more fields in the `search` feature output
 - [ ] `backup` feature → add hidden marker by file to prevent recovering of files that weren't backed up
 - [ ] Improve error codes (`error_code.h`) to embrace every possible error
+- [ ] `log` feature → flag to clean .log file
 
 
 ## Refactoring tasks
-- [ ] Change `validate_command()` to use `for` loop instead of `bsearch()`
-- [ ] Fix `validate_args()` with new max/min commands allowed
 - [ ] Refactor flags checker (boilerplate in the beggining of each `CMD_element()` function)
-- [ ] Change type checker to use `d_type` as default and `struct stat` as fallback
 - [ ] Modular function to create and validate path
 - [ ] Change content retriever (`struct dirent`) to remove boilerplate
 
 
 ## Testing
-
+- [ ] Test all features
 
 ## BACKLOG
+- Implement `copy` feature
 
 
 ## DONE
@@ -65,3 +61,9 @@
 - [x] Implement `backup` feature
 - [x] Implement `recover` feature
 - [x] Implement `help` feature
+- [x] Implement `log` feature
+- [x] Change `validate_command()` to use `for` loop instead of `bsearch()`
+- [x] Add more fields in the `search` feature output
+- [x] Fix `validate_args()` with new max/min commands allowed
+- [x] Change type checker to use `d_type` as default and `struct stat` as fallback
+- [x] Fix directory retriever in `move`, `backup` and `recover` features (all three need destination directory)

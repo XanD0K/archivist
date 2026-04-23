@@ -1,6 +1,6 @@
 # Changelog
 
-## [VERSION] - DATE
+## [1.0.0] - DATE
 ### Added
 
 ### Changed
@@ -8,6 +8,30 @@
 ### Fixed
 
 ### Removed
+
+
+## [0.9.0] - 2026-04-22
+### Changed
+- Improved all features to rely on `d_type` to determine the type of the element
+- Changed `concatenates_prefix()` to use `memcpy()` instead of `strcpy()` + `strcat()`
+- Changed `stat()` to `lstat()`
+
+### Fixed
+- Fixed `search` feature logic, by improving filters' check and recursive call
+- Fixed `validate_args()` and `check_args_count()`
+- Fixed memory leakage on `report` feature
+- Fixed bugs and overall logic on `tree` feature
+- Fixed bugs and momory leakage on `move` feature
+- Fixed declaration of `dst_dir` and `base_dir` for `move`, `backup` and `recover` features
+- Improved UX, validations, user's input, and cleaned code on `move`, `delete`, `rename`, `backup` and `recover` features
+
+
+## [0.8.0] - 2026-04-17
+### Added
+- Implemented `log` feature
+
+### Changed
+- Changed `validate_command()` to search with a `for` loop, instead of `bsearch()`
 
 
 ## [0.7.0] - 2026-04-15

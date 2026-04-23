@@ -8,6 +8,41 @@
 **Progress**
 
 
+## [2026-04-22]
+**Plans**
+- Improve code, fix bugs, remove boilerplates
+- Let's polishments before testing
+
+**Challenges**
+- Walk through all files and all functions, finding the best improvements
+
+**Progress**
+- Changed `list` feature output logic, to be more clean and direct, concentrating the block of code that deals with printing the output message
+- Fixed `search` feature do handle a better interaction between `type` flag and other flags, when chosen type was "directory"
+- Refactores all features to rely on `d_type` (from `struct dirent`) to determine the type of the element, instead of always calculating `struct stat` for that element. The `stat` is now only being used as a fallback option, when `d_type` is UNKNOWN, or when it's other types besides regular files, simbolic links and directories
+- Also changed `list` feature counters to be a new `ListCounters` structure, which improved code, keeping it cleaner and improving maintainability
+- Cleaned `search` feature logic, refactored its usage, improved functions
+- Changed all `stat()` calls to be `lstat()` instead, preventing following path when element's type is simbolic link
+- Changed `concatenates_prefix()` to use `memcpy()` instead of `strcpy()` + `strcat()`, which has a better performance
+- Improved `tree` feature, fixed bugs, cleaned code
+- Fixed declaration logic of `dst_dir` and `base_dir` for `move`, `backup` and `recover` features. On those functions, those directories were inverted. Added `char *dst_dir` field to `CommandContext` stucture, and improved directories logic for all features
+- Implemented last improvements on `move`, `delete`, `rename`, `backup` and `recover` features, keeping code cleaner
+- Implemented output messages on `rename`, `backup` and `recover` features
+
+
+## [2026-04-17]
+**Plans**
+- Implement `log` feature
+- Fix bugs and improve code
+
+**Challenges**
+- Manage .log files, read and write line by line, define its structure
+
+**Progress**
+- On `validate_command()`, I was using `bsearch()` to search for the command in the `cmd_table`. I remember the information that Binary Search wouldn't be ideal if the list was small (less than 40 items). Since my table has only 10 commands, a simples `for` loop with early exit would be better
+- Fully implemented `log` feature
+
+
 ## [2026-04-15]
 **Plans**
 - Implement `backup` feature
@@ -26,9 +61,9 @@
     - https://manual.cs50.io/2/copy_file_range
     - https://man7.org/linux/man-pages/man3/open.3p.html
     - https://man7.org/linux/man-pages/man3/close.3p.html
-- I first decided to do an incremental backup, which would only trigger for files that were modified. To do this, first checks file's existence on destination directory, than compare `st_mtim` and `st_size`, to check for changes. It still has a corner case that leads to orphan files: if the name of the file is modified, the program won't recognize this change, will create a new backup, and the first backed up file (the one with the old name) will have no relation to the file in the source directory. I could create a function that makes hashes for each file, and I could just compare the hashes from source and destination directories, but that will be something to do later.
-- I then faced a logic issue: the `recover` feature would work just like a "copy" feature, where files could just be copied from any directory. To solve this, I decided to add a hidden marked file (`.archivist-backup`) to the destination directory, which would define that directory as the holder of backed up files. It happens right after `backup` finishes traversing all files. Now, the `recover` feature shall only work if the source directory (destination directory when backing up) has that hidden marked file. It still has one problem: user could just manually transfer files from any directory to the backed up directory, and use the `recover` feature. Later I'll add a hidden marked file for each file in the directory, which will prevent this behavior.
-- `recover` feature was just a simplier version of the `backup` feature, with almost no flags and that uses the same functions. It was an easy implementation.
+- I first decided to do an incremental backup, which would only trigger for files that were modified. To do this, first checks file's existence on destination directory, than compare `st_mtim` and `st_size`, to check for changes. It still has a corner case that leads to orphan files: if the name of the file is modified, the program won't recognize this change, will create a new backup, and the first backed up file (the one with the old name) will have no relation to the file in the source directory. I could create a function that makes hashes for each file, and I could just compare the hashes from source and destination directories, but that will be something to do later
+- I then faced a logic issue: the `recover` feature would work just like a "copy" feature, where files could just be copied from any directory. To solve this, I decided to add a hidden marked file (`.archivist-backup`) to the destination directory, which would define that directory as the holder of backed up files. It happens right after `backup` finishes traversing all files. Now, the `recover` feature shall only work if the source directory (destination directory when backing up) has that hidden marked file. It still has one problem: user could just manually transfer files from any directory to the backed up directory, and use the `recover` feature. Later I'll add a hidden marked file for each file in the directory, which will prevent this behavior
+- `recover` feature was just a simplier version of the `backup` feature, with almost no flags and that uses the same functions. It was an easy implementation
 - `backup` and `recover` features successfully implemented
 
 
@@ -137,7 +172,7 @@
 - Fixed problems with memory leak specifically with `strdup()` and `asprintf()`. I didn't know I should `free()` strings returned by those functions:
     - https://manual.cs50.io/3/strdup
     - https://manual.cs50.io/3/asprintf
-- Fixed problems when comparing and making operations with different types: `size_t` with `int`, `const char *` with `char *`, `ssize_t` with `size_t`. Needs to pay more attention about the types I declare and the casts needed to make all operations work.
+- Fixed problems when comparing and making operations with different types: `size_t` with `int`, `const char *` with `char *`, `ssize_t` with `size_t`. Needs to pay more attention about the types I declare and the casts needed to make all operations work
 - `report` feature is fully implemented
 
 
