@@ -13,7 +13,8 @@
 // Structure to all CLI flags of 'list' functionality
 typedef struct
 {
-    CommonOptions base;  // human-readable | ignore-case | recursive | sort    
+    CommonOptions base;  // human-readable | recursive | sort    
+    bool ignore_case;
     bool reverse;
     bool dir_first;
 } ListOptions;

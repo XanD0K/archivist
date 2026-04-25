@@ -25,8 +25,9 @@
 #include "utils_sort.h"
 
 // Prototypes
-static void list_element(struct dirent *namelist, const char *base_dir, const char *current_path,
-                         ListCounters *counters, SortFlag sorter, ListOptions *opts);
+static void list_element(const struct dirent *namelist, ListOptions *opts, 
+                         const char *base_dir, const char *current_path,
+                         ListCounters *counters, SortScandir sorter);
 
 // Setup logic for 'list' feature
 ErrorCode handle_list(int argc, char **argv, int min_args)
@@ -53,7 +54,8 @@ ErrorCode handle_list(int argc, char **argv, int min_args)
     cmp_opts.base_dir = context->base_dir;
 
     // Default sorter function (by name)
-    SortFlag sorter = cmp_name_scandir;
+    SortScandir sorter = cmp_name_scandir;
+    // Checks for 'sort' flag
     if (opts->base.sort && opts->base.sort[0] != '\0' && 
         strcasecmp(opts->base.sort, "name") != 0)
     {
@@ -62,7 +64,7 @@ ErrorCode handle_list(int argc, char **argv, int min_args)
         size_t len = sizeof(sorts)/sizeof(sorts[0]);
         
         // Updates sorter function
-        sorter = get_sort_function(opts->base.sort, sorts, len);
+        sorter = get_scandir_sort_fn(opts->base.sort, sorts, len);
         if (!sorter)
         {
             free_command_context(context);
@@ -70,7 +72,7 @@ ErrorCode handle_list(int argc, char **argv, int min_args)
         }
     }
 
-    // Gets directory's content
+    // Retrieves directory's content
     struct dirent **namelist = NULL;
     int n = scandir(context->base_dir, &namelist, scandir_no_dot_filter, sorter);
     if (n == -1)
@@ -80,20 +82,22 @@ ErrorCode handle_list(int argc, char **argv, int min_args)
         return EC_SCANDIR_ERROR;
     }
 
+    // Initializes counters
     ListCounters counters = {0};
 
     for (int i = 0; i < n; i++)
     {
         // Recursively checks directory elements and updates counters
-        list_element(namelist[i], context->base_dir, context->base_dir, &counters, sorter, opts);
+        list_element(namelist[i], opts, context->base_dir,
+                     context->base_dir, &counters, sorter);
     }
     free_dirent(namelist, n);
 
-    // Prints counter variables
+    // Prints output message
     printf("Directories: %zu\n"
            "Files: %zu\n"
            "Symbolic Links: %zu\n"
-           "Other: %zu\n",
+           "Others: %zu\n",
            counters.directories, counters.files, counters.slinks, counters.others);
     
     if (opts->base.human_readable)
@@ -124,12 +128,14 @@ ErrorCode parse_list_opts(int argc, char **argv, int opt_start, void *opts_out)
     ListOptions *opts = (ListOptions*)opts_out;
     opts->base.sort = "name";
 
-    uint32_t supported_flags = COMMON_HUMAN_READABLE |
-                               COMMON_IGNORE_CASE |
-                               COMMON_RECURSIVE |
-                               COMMON_SORT;
+    opterr = 0;
 
-    ErrorCode ret = parse_common_opts(argc, argv, opt_start, &opts->base, supported_flags);
+    // Supported flags
+    uint32_t common_flags = COMMON_HUMAN_READABLE |
+                            COMMON_RECURSIVE |
+                            COMMON_SORT;
+
+    ErrorCode ret = parse_common_opts(argc, argv, opt_start, &opts->base, common_flags);
     if (ret != EC_SUCCESS)
     {
         return ret;
@@ -137,6 +143,7 @@ ErrorCode parse_list_opts(int argc, char **argv, int opt_start, void *opts_out)
 
     static struct option long_opts[] =
     {
+        {"ignore-case", no_argument, 0, 'i'},
         {"reverse", no_argument, 0, 'r'},
         {"dir-first", no_argument, 0, 'D'},
         {NULL, 0, NULL, 0}
@@ -144,7 +151,7 @@ ErrorCode parse_list_opts(int argc, char **argv, int opt_start, void *opts_out)
 
     int opt = 0;
     int long_index = 0;
-    char *short_opts = "rD";
+    char *short_opts = "irD";
 
     optind = opt_start;
 
@@ -152,6 +159,11 @@ ErrorCode parse_list_opts(int argc, char **argv, int opt_start, void *opts_out)
     {
         switch (opt)
         {
+            case 'i':
+            {
+                opts->ignore_case = true;
+                break;
+            }
             case 'r':  // reverse
             {
                 opts->reverse = true;
@@ -164,8 +176,15 @@ ErrorCode parse_list_opts(int argc, char **argv, int opt_start, void *opts_out)
             }
             case '?':  // Error
             {
-                fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
-                return EC_PARSE_ERROR;
+                if (is_common_flag(argv[optind - 1], common_flags))
+                {
+                    continue;;
+                }
+                else
+                {
+                    fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
+                    return EC_PARSE_ERROR;
+                }
             }
         }
     }
@@ -174,8 +193,9 @@ ErrorCode parse_list_opts(int argc, char **argv, int opt_start, void *opts_out)
 }
 
 // Lists current element and updates counters
-static void list_element(struct dirent *namelist, const char *base_dir, const char *current_path,
-                         ListCounters *counters, SortFlag sorter, ListOptions *opts)
+static void list_element(const struct dirent *namelist, ListOptions *opts, 
+                         const char *base_dir, const char *current_path,
+                         ListCounters *counters, SortScandir sorter)
 {
     // Builds full path to current element
     char full_path[PATH_MAX];
@@ -190,7 +210,7 @@ static void list_element(struct dirent *namelist, const char *base_dir, const ch
     const char *suffix = get_suffix(full_path, base_dir);
     printf("%s\n", suffix);
 
-    // Checks for directory type
+    // Checks for content type
     bool is_dir = (namelist->d_type == DT_DIR);
     bool is_file = (namelist->d_type == DT_REG);
     bool is_slink = (namelist->d_type == DT_LNK);
@@ -230,7 +250,7 @@ static void list_element(struct dirent *namelist, const char *base_dir, const ch
                 for (int i = 0; i < n; i++)
                 {
                     // Recursively checks directory elements and updates counters
-                    list_element(entry[i], base_dir, full_path, counters, sorter, opts);
+                    list_element(entry[i], opts, base_dir, full_path, counters, sorter);
                 }
                 free_dirent(entry, n);
             }
@@ -246,7 +266,7 @@ static void list_element(struct dirent *namelist, const char *base_dir, const ch
     {
         // Gets element's data
         struct stat st;
-        if (stat(full_path, &st) == 0)
+        if (lstat(full_path, &st) == 0)
         {
             counters->files++;
             counters->total_size += st.st_size;
