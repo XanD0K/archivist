@@ -17,9 +17,11 @@
 #include "utils.h"
 
 // Prototypes
-static void print_tree(struct dirent **namelist, const char *base_dir, int n);
+static void print_tree(struct dirent **namelist, const char *base_dir,
+                       int n, ScandirFilter filter);
 static void print_branch(const struct dirent *namelist, const char *current_path,
-                         const char *base_dir, const char *prefix, bool is_last);
+                         const char *base_dir, const char *prefix, bool is_last,
+                         ScandirFilter filter);
 static char *concatenates_prefix(const char *prefix, const char *sufix);
 
 // Setup logic for 'tree' feature
@@ -32,31 +34,59 @@ ErrorCode handle_tree(int argc, char **argv, int min_args)
         return EC_SUCCESS;
     }
 
+    // Default values
+    const char *src_path = NULL;
+    int flag_index = min_args;
+    ScandirFilter filter = scandir_show_hidden_files;
+
     // Gets valid base directory (default: .)
-    char *base_dir = get_valid_directory(argv[min_args]);
+    if (argv[min_args] && argv[min_args][0] != '-')
+    {
+        src_path = argv[min_args];
+        flag_index = (int)min_args + 1;
+    }
+    char *base_dir = get_valid_directory(src_path);
     if (!base_dir)
     {
         return EC_INVALID_DIRECTORY;
     }
 
-    // Gets all content from directory
+    // Checks for 'all' flag
+    if (argv[flag_index] && argv[flag_index][0] != '\0')
+    {
+        if (strcasecmp(argv[flag_index], "--all") == 0 ||
+            strcasecmp(argv[flag_index], "-a") == 0)
+            {
+                filter = scandir_no_dot_filter;
+            }
+        else
+        {
+            errno = EINVAL;
+            fprintf(stderr, "Invalid flag %s: %s\n", argv[flag_index], strerror(errno));
+            free(base_dir);
+            return EC_INVALID_FLAG;
+        }
+    }
+
+    // Retrieves directory's content
     struct dirent **namelist = NULL;
-    int n = scandir(base_dir, &namelist, scandir_no_dot_filter, versionsort);
+    int n = scandir(base_dir, &namelist, filter, versionsort);
     if (n == -1)
     {
-        free(base_dir);
         fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
+        free(base_dir);
         return EC_SCANDIR_ERROR;
     }
     
-    print_tree(namelist, base_dir, n);
+    print_tree(namelist, base_dir, n, filter);
 
     free(base_dir);    
     return EC_SUCCESS;
 }
 
 // Prints root and defines starting point for branches
-static void print_tree(struct dirent **namelist, const char *base_dir, int n)
+static void print_tree(struct dirent **namelist, const char *base_dir,
+                       int n, ScandirFilter filter)
 {
     // Prints root
     printf("%s\n", base_dir);
@@ -66,7 +96,7 @@ static void print_tree(struct dirent **namelist, const char *base_dir, int n)
     for (int i = 0; i < n; i++)
     {
         bool is_last = (i == (n - 1));
-        print_branch(namelist[i], base_dir, base_dir, prefix, is_last);
+        print_branch(namelist[i], base_dir, base_dir, prefix, is_last, filter);
 
         free(namelist[i]);
     }
@@ -76,10 +106,11 @@ static void print_tree(struct dirent **namelist, const char *base_dir, int n)
 
 // Prints all content from a diretory
 static void print_branch(const struct dirent *namelist, const char *current_path,
-                         const char *base_dir, const char *prefix, bool is_last)
+                         const char *base_dir, const char *prefix, bool is_last,
+                         ScandirFilter filter)
 {
-    char *symbol = (is_last) ? "└── " : "├── ";
-    char *continuation = (is_last) ? "    " : "│   ";
+    char *symbol = (is_last) ? "└──── " : "├──── ";
+    char *continuation = (is_last) ? "      " : "│     ";
 
     char new_path[PATH_MAX];
     if (check_path_name_size(new_path, sizeof(new_path), current_path, namelist->d_name) == -1)
@@ -103,7 +134,7 @@ static void print_branch(const struct dirent *namelist, const char *current_path
     if (is_dir)
     {
         struct dirent **entry;
-        int n = scandir(new_path, &entry, scandir_no_dot_filter, versionsort);
+        int n = scandir(new_path, &entry, filter, versionsort);
         if (n == -1)
         {
             return;
@@ -115,14 +146,14 @@ static void print_branch(const struct dirent *namelist, const char *current_path
             char *new_prefix = concatenates_prefix(prefix, continuation);
             if (new_prefix)
             {
-                print_branch(entry[i], new_path, base_dir, new_prefix, child_is_last);
+                print_branch(entry[i], new_path, base_dir, new_prefix, child_is_last, filter);
                 free(new_prefix);
 
             }
             else
             {
                 // Fallbacks to previous prefix
-                print_branch(entry[i], new_path, base_dir, prefix, child_is_last);
+                print_branch(entry[i], new_path, base_dir, prefix, child_is_last, filter);
             }
 
             free(entry[i]);
@@ -132,7 +163,7 @@ static void print_branch(const struct dirent *namelist, const char *current_path
     }
 }
 
-// Concatenates prefix
+// Concatenates prefix and suffix
 static char *concatenates_prefix(const char *prefix, const char *sufix)
 {
     size_t prefix_len = strlen(prefix);
