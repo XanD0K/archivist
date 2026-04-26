@@ -24,8 +24,9 @@
 #include "utils_filter.h"
 
 // Prototypes
-static void search_element(const struct dirent *namelist, const char *base_dir,
-                           const char *current_path, SearchOptions *opts, SearchCounters *counters);
+static void search_element(const struct dirent *namelist, SearchOptions *opts,
+                           Extension *ext, const char *base_dir, const char *current_path,
+                           SearchCounters *counters, ScandirFilter filter);
 
 // Setup logic for 'search' feature
 ErrorCode handle_search(int argc, char **argv, int min_args)
@@ -46,23 +47,48 @@ ErrorCode handle_search(int argc, char **argv, int min_args)
 
     SearchOptions *opts = (SearchOptions*)context->opts;
 
+    // Initializes counters
+    SearchCounters counters = {0};
+
+    // Retrieves user's selected extensions (-e|--extension)
+    Extension *ext = NULL;
+    if (opts->filter.extension && opts->filter.extension[0] != '\0')
+    {
+        ext = get_all_extensions(opts->filter.extension, &counters.ext);
+        if (!ext)
+        {
+            fprintf(stderr, "Error on memory allocation: %s\n", strerror(errno));
+            free_command_context(context);
+            return EC_MEMORY_ALLOCATION;
+        }
+    }
+
+    // Default return value
+    ErrorCode ret = EC_SUCCESS;
+
+    // Determines the filter used in scandir()
+    ScandirFilter filter = (opts->base.all)
+        ? scandir_no_dot_filter
+        : scandir_visible_only;
+
+    // Retrieves directory's content
     struct dirent **namelist = NULL;
-    int n = scandir(context->base_dir, &namelist, scandir_no_dot_filter, alphasort);
+    int n = scandir(context->base_dir, &namelist, filter, alphasort);
     if (n == -1)
     {
         fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
-        free_command_context(context);
-        return EC_SCANDIR_ERROR;
+        ret = EC_SCANDIR_ERROR;
+        goto cleanup;
     }
 
-    // Initializes counters
-    SearchCounters counters = {0};
     for (int i = 0; i < n; i++)
     {
-        search_element(namelist[i], context->base_dir, context->base_dir, opts, &counters);
+        search_element(namelist[i], opts, ext, context->base_dir,
+                       context->base_dir, &counters, filter);
     }
     free_dirent(namelist, n);
 
+    // Prints output message
     if (counters.searched == 0)
     {
         printf("No elements found!\n");
@@ -77,8 +103,13 @@ ErrorCode handle_search(int argc, char **argv, int min_args)
         printf("(Finished with %zu erros)\n", counters.error);
     }
 
+cleanup:
+    if (ext)
+    {
+        free_extensions(ext, counters.ext);
+    }
     free_command_context(context);
-    return EC_SUCCESS;
+    return ret;
 }
 
 // Parses through CLI arguments for 'search' functionality
@@ -86,37 +117,80 @@ ErrorCode parse_search_opts(int argc, char **argv, int opt_start, void *opts_out
 {
     SearchOptions *opts = (SearchOptions*)opts_out;
 
-    uint32_t supported_flags = COMMON_IGNORE_CASE |
-                               COMMON_RECURSIVE |
-                               FILTER_CONTAINS |
-                               FILTER_EXTENSION |
-                               FILTER_MAX_SIZE |
-                               FILTER_MIN_SIZE |
-                               FILTER_TYPE;
+    opterr = 0;
 
-    ErrorCode ret;
-    ret = parse_common_opts(argc, argv, opt_start, &opts->base, supported_flags);
-    if (ret != EC_SUCCESS)
+    // Supported flags
+    uint32_t common_flags = COMMON_ALL |
+                            COMMON_RECURSIVE;
+    uint32_t filter_flags = FILTER_CONTAINS |
+                            FILTER_EXTENSION |
+                            FILTER_MAX_SIZE |
+                            FILTER_MIN_SIZE |
+                            FILTER_TYPE;
+
+    static struct option long_opts[] =
     {
-        return ret;
-    }
-    ret = parse_filter_options(argc, argv, opt_start, &opts->filter, supported_flags);
-    if (ret != EC_SUCCESS)
+        // Common flags
+        {"all", no_argument, 0, 'a'},
+        {"recursive", no_argument, 0, 'R'},
+        // Filter flags
+        {"contains", required_argument, 0, 'c'},
+        {"extension", required_argument, 0, 'e'},
+        {"max-size", required_argument, 0, 0},
+        {"min-size", required_argument, 0, 0},
+        {"type", required_argument, 0, 't'},
+        {NULL, 0, NULL, 0}
+    };
+
+    int opt = 0;
+    int long_index = 0;
+    char *short_opts = "aRc:e:t:";
+
+    optind = opt_start;
+
+    while ((opt = getopt_long(argc, argv, short_opts, long_opts, &long_index)) != -1)
     {
-        if (ret == EC_PARSE_ERROR_SIZE)
+        switch (opt)
         {
-            errno = EIO;
-            fprintf(stderr, "Invalid size: %s\n", strerror(errno));
+            // ========== COMMON ==========
+            case 'a':  // all
+            case 'R':  // recursive
+            {
+                handle_common_flag(opt, optarg, &opts->base, common_flags);
+                break;
+            }
+            // ========== FILTER ==========
+            case 'c':  // contains
+            case 'e':  // extension
+            case 't':  // type
+            case 0:    // max-size | min-size 
+            {
+                handle_filter_flag(opt, long_opts[long_index].name, optarg, &opts->filter, filter_flags);
+                break;
+            }
+            // ========== ERROR ===========
+            case '?':
+            {
+                fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
+                return EC_PARSE_ERROR;
+            }
         }
-        return ret;
+    }
+    
+    // Validates size
+    if (opts->filter.max_size == -1 || opts->filter.min_size == -1)
+    {
+        return EC_PARSE_ERROR_SIZE;
     }
 
+    opts->filter.supported = filter_flags;
     return EC_SUCCESS;
 }
 
 // Searches for an element
-static void search_element(const struct dirent *namelist, const char *base_dir,
-                           const char *current_path, SearchOptions *opts, SearchCounters *counters)
+static void search_element(const struct dirent *namelist, SearchOptions *opts,
+                           Extension *ext, const char *base_dir, const char *current_path,
+                           SearchCounters *counters, ScandirFilter filter)
 {
     // Builds path to current element
     char full_path[PATH_MAX];
@@ -126,7 +200,7 @@ static void search_element(const struct dirent *namelist, const char *base_dir,
         return;
     }
 
-    // Checks for directory type
+    // Checks for content type
     bool is_dir = (namelist->d_type == DT_DIR);
     bool is_file = (namelist->d_type == DT_REG);
     bool is_slink = (namelist->d_type == DT_LNK);
@@ -148,35 +222,8 @@ static void search_element(const struct dirent *namelist, const char *base_dir,
     // ==================== Directories ====================
     if (is_dir)
     {
-        bool should_print = true;
-        // Checks directory's filters
-        if (opts->filter.type && opts->filter.type[0] != '\0')
-        {
-            if (!is_directory_type(opts->filter.type))
-            {
-                should_print = false;
-            }
-           
-        }
-
-        if (should_print && opts->filter.contains && opts->filter.contains[0] != '\0')
-        {
-            if (!match_searched_name(namelist->d_name, opts->filter.contains, opts->base.ignore_case))
-            {
-                should_print = false;
-            }
-        }
-
-        if (should_print && (opts->filter.max_size || opts->filter.min_size))
-        {
-            off_t dir_size = 0;
-            if (!match_directory_size(full_path, opts->filter.max_size, opts->filter.min_size, &dir_size))
-            {
-                should_print = false;
-            }
-        }
-
-        if (should_print)
+        // Checks if current directory validity based on chosen flags
+        if (check_directory_flags(namelist, full_path, &opts->filter))
         {
             // Prints found element
             const char *suffix = get_suffix(full_path, base_dir);
@@ -188,7 +235,7 @@ static void search_element(const struct dirent *namelist, const char *base_dir,
         if (opts->base.recursive)
         {
             struct dirent **entry = NULL;
-            int n = scandir(full_path, &entry, scandir_no_dot_filter, alphasort);
+            int n = scandir(full_path, &entry, filter, alphasort);
             if (n == -1)
             {
                 fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
@@ -197,7 +244,7 @@ static void search_element(const struct dirent *namelist, const char *base_dir,
             }
             for (int i = 0; i < n; i++)
             {
-                search_element(entry[i], base_dir, full_path, opts, counters);
+                search_element(entry[i], opts, ext, base_dir, full_path, counters, filter);
             }
             free_dirent(entry, n);
         }
@@ -207,53 +254,7 @@ static void search_element(const struct dirent *namelist, const char *base_dir,
     // ======================= Files =======================
     else if (is_file || is_slink)
     {
-        bool should_print = true;
-
-        // Name filter
-        if (opts->filter.contains && opts->filter.contains[0] != '\0')
-        {
-            if (!match_searched_name(namelist->d_name, opts->filter.contains, opts->base.ignore_case))
-            {
-                should_print = false;
-            }
-        }
-
-        // Extension filter
-        if (should_print && is_file && opts->filter.extension &&
-            !match_searched_extension(opts->filter.extension, namelist->d_name))
-        {
-            should_print = false;
-        }
-
-        if (should_print &&
-            (opts->filter.type || opts->filter.max_size || opts->filter.min_size))
-        {
-            struct stat st;
-            if (lstat(full_path, &st) != 0)
-            {
-                fprintf(stderr, "Couldn't access %s: %s\n", full_path, strerror(errno));
-                counters->error++;
-                should_print = false;
-            }
-
-            // Checks for element's type
-            if (is_file && opts->filter.type && opts->filter.type[0] != '\0')
-            {
-                if (!match_type(opts->filter.type, st.st_mode))
-                {
-                    should_print = false;
-                }
-            }
-
-            // Checks for size
-            if (should_print && (opts->filter.max_size || opts->filter.min_size) &&
-                !match_size(opts->filter.max_size, opts->filter.min_size, st.st_size))
-            {
-                should_print = false;
-            }
-        }
-
-        if (should_print)
+        if (check_file_flags(namelist, ext, full_path, &opts->filter, counters->ext, &counters->error))
         {
             // Prints found element
             const char *suffix = get_suffix(full_path, base_dir);
@@ -261,6 +262,4 @@ static void search_element(const struct dirent *namelist, const char *base_dir,
             counters->searched++;
         }
     }
-
-    return;
 }

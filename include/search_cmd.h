@@ -12,13 +12,14 @@
 // Structure to all CLI flags of 'search' functionality
 typedef struct
 {
-    CommonOptions base;    // ignore-case | recursive
+    CommonOptions base;    // recursive
     FilterOptions filter;  // contains | extension | max_size | min_size | type
 } SearchOptions;
 
 // Structure to all counters
 typedef struct
 {
+    size_t ext;
     size_t searched;
     size_t error;
 } SearchCounters;
