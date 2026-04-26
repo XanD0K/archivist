@@ -142,15 +142,14 @@ ErrorCode parse_list_opts(int argc, char **argv, int opt_start, void *opts_out)
                             COMMON_RECURSIVE |
                             COMMON_SORT;
 
-    // General Parsers
-    ErrorCode ret = parse_common_opts(argc, argv, opt_start, &opts->base, common_flags);
-    if (ret != EC_SUCCESS)
-    {
-        return ret;
-    }
-
     static struct option long_opts[] =
     {
+        // Common flags
+        {"all", no_argument, 0, 'a'},
+        {"human-readable", no_argument, 0, 'h'},
+        {"sort", required_argument, 0, 's'},
+        {"recursive", no_argument, 0, 'R'},
+        // Specific flags
         {"ignore-case", no_argument, 0, 'i'},
         {"reverse", no_argument, 0, 'r'},
         {"dir-first", no_argument, 0, 'D'},
@@ -159,7 +158,7 @@ ErrorCode parse_list_opts(int argc, char **argv, int opt_start, void *opts_out)
 
     int opt = 0;
     int long_index = 0;
-    char *short_opts = "irD";
+    char *short_opts = "ahs:RirD";
 
     optind = opt_start;
 
@@ -167,7 +166,17 @@ ErrorCode parse_list_opts(int argc, char **argv, int opt_start, void *opts_out)
     {
         switch (opt)
         {
-            case 'i':
+            // ========== COMMON ==========
+            case 'a':  // all
+            case 'h':  // human-readable
+            case 's':  // sort
+            case 'R':  // recursive
+            {
+                handle_common_flag(opt, optarg, &opts->base, common_flags);
+                break;
+            }
+            // ========= SPECIFIC =========
+            case 'i':  // ignore-case
             {
                 opts->ignore_case = true;
                 break;
@@ -182,18 +191,11 @@ ErrorCode parse_list_opts(int argc, char **argv, int opt_start, void *opts_out)
                 opts->dir_first = true;
                 break;
             }
-            case '?':  // Error
+            // ========== ERROR ===========
+            case '?':
             {
-                // Checks if it's a flag from general parsers
-                if (is_common_flag(argv[optind - 1], common_flags))
-                {
-                    continue;
-                }
-                else
-                {
-                    fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
-                    return EC_PARSE_ERROR;
-                }
+                fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
+                return EC_PARSE_ERROR;
             }
         }
     }
