@@ -9,8 +9,10 @@
 #include "error_code.h"
 
 // Prototypes
-ErrorCode parse_common_opts(int argc, char **argv, int opt_start, CommonOptions *opts, uint32_t supported_flags);
-ErrorCode parse_filter_options(int argc, char **argv, int opt_start, FilterOptions *opts, uint32_t supported_flags);
-ErrorCode parse_action_options(int argc, char **argv, int opt_start, ActionOptions *opts, uint32_t supported_flags);
+void handle_common_flag(int opt, char *opt_arg, CommonOptions *opts,
+                         uint32_t supported_flags);
+void handle_filter_flag(int opt, const char *opt_name, char *opt_arg,
+                         FilterOptions *opts, uint32_t supported_flags);
+void handle_action_flag(int opt, ActionOptions *opts, uint32_t supported_flags);
 
 #endif
