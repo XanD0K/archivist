@@ -9,9 +9,6 @@
 #include "cli_opts.h"
 #include "error_code.h"
 
-// Alias of a pointer to a function
-typedef int (*SortReport)(const void *a, const void *b);
-
 // Structure to all CLI flags of 'report' functionality
 typedef struct
 {
