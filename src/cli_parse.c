@@ -35,7 +35,7 @@ void handle_common_flag(int opt, char *opt_arg, CommonOptions *opts,
         {
             if (supported_flags & COMMON_SORT)
             {
-                opts->sort = opt_arg;
+                opts->sort = (opt_arg && opt_arg[0] != '\0') ? opt_arg : "name";
             }
             break;
         }
@@ -44,6 +44,15 @@ void handle_common_flag(int opt, char *opt_arg, CommonOptions *opts,
             if (supported_flags & COMMON_RECURSIVE)
             {
                 opts->recursive = true;
+            }
+            break;
+        }
+        case 'A': // almost-all
+        {
+            if (supported_flags & COMMON_ALMOST_ALL)
+            {
+                opts->almost_all = true;
+                opts->all = false;
             }
             break;
         }

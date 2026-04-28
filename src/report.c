@@ -66,9 +66,15 @@ ErrorCode handle_report(int argc, char **argv, int min_args)
     }
     
     // Determines the filter used in scandir()
-    ScandirFilter filter = (opts->base.all)
-        ? scandir_no_dot_filter
-        : scandir_visible_only;
+    ScandirFilter filter = scandir_visible_only;
+    if (opts->base.all)
+    {
+        filter = scandir_no_dot_filter;
+    }
+    else if (opts->base.almost_all)
+    {
+        filter = scandir_show_hidden_files;
+    }
 
     // Default return value
     ErrorCode ret = EC_SUCCESS;
@@ -182,6 +188,7 @@ ErrorCode parse_report_opts(int argc, char **argv, int opt_start, void *opts_out
 
     // Supported flags
     uint32_t common_flags = COMMON_ALL |
+                            COMMON_ALMOST_ALL |
                             COMMON_HUMAN_READABLE |
                             COMMON_RECURSIVE |
                             COMMON_SORT;
@@ -191,6 +198,7 @@ ErrorCode parse_report_opts(int argc, char **argv, int opt_start, void *opts_out
     {
         // Common flags
         {"all", no_argument, 0, 'a'},
+        {"almost-all", no_argument, 0, 'A'},
         {"human-readable", no_argument, 0, 'h'},
         {"sort", required_argument, 0, 's'},
         {"recursive", no_argument, 0, 'R'},
@@ -201,7 +209,7 @@ ErrorCode parse_report_opts(int argc, char **argv, int opt_start, void *opts_out
 
     int opt = 0;
     int long_index = 0;
-    char *short_opts = "ahs:Re:";
+    char *short_opts = "aAhs:Re:";
 
     optind = opt_start;
 
@@ -211,6 +219,7 @@ ErrorCode parse_report_opts(int argc, char **argv, int opt_start, void *opts_out
         {
             // ========== COMMON ==========
             case 'a':  // all
+            case 'A':  // almost-all
             case 'h':  // human-readable
             case 's':  // sort
             case 'R':  // recursive
@@ -231,6 +240,11 @@ ErrorCode parse_report_opts(int argc, char **argv, int opt_start, void *opts_out
                 return EC_PARSE_ERROR;
             }
         }
+    }
+
+    if (opts->base.almost_all)
+    {
+        opts->base.all = false;
     }
 
     return EC_SUCCESS;

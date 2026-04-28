@@ -67,9 +67,15 @@ ErrorCode handle_search(int argc, char **argv, int min_args)
     ErrorCode ret = EC_SUCCESS;
 
     // Determines the filter used in scandir()
-    ScandirFilter filter = (opts->base.all)
-        ? scandir_no_dot_filter
-        : scandir_visible_only;
+    ScandirFilter filter = scandir_visible_only;
+    if (opts->base.all)
+    {
+        filter = scandir_no_dot_filter;
+    }
+    else if (opts->base.almost_all)
+    {
+        filter = scandir_show_hidden_files;
+    }
 
     // Retrieves directory's content
     struct dirent **namelist = NULL;
@@ -121,6 +127,7 @@ ErrorCode parse_search_opts(int argc, char **argv, int opt_start, void *opts_out
 
     // Supported flags
     uint32_t common_flags = COMMON_ALL |
+                            COMMON_ALMOST_ALL |
                             COMMON_RECURSIVE;
     uint32_t filter_flags = FILTER_CONTAINS |
                             FILTER_EXTENSION |
@@ -132,6 +139,7 @@ ErrorCode parse_search_opts(int argc, char **argv, int opt_start, void *opts_out
     {
         // Common flags
         {"all", no_argument, 0, 'a'},
+        {"almost-all", no_argument, 0, 'A'},
         {"recursive", no_argument, 0, 'R'},
         // Filter flags
         {"contains", required_argument, 0, 'c'},
@@ -154,6 +162,7 @@ ErrorCode parse_search_opts(int argc, char **argv, int opt_start, void *opts_out
         {
             // ========== COMMON ==========
             case 'a':  // all
+            case 'A':  // almost-all
             case 'R':  // recursive
             {
                 handle_common_flag(opt, optarg, &opts->base, common_flags);
@@ -181,6 +190,11 @@ ErrorCode parse_search_opts(int argc, char **argv, int opt_start, void *opts_out
     if (opts->filter.max_size == -1 || opts->filter.min_size == -1)
     {
         return EC_PARSE_ERROR_SIZE;
+    }
+
+    if (opts->base.almost_all)
+    {
+        opts->base.all = false;
     }
 
     opts->filter.supported = filter_flags;
