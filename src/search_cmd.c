@@ -152,7 +152,7 @@ ErrorCode parse_search_opts(int argc, char **argv, int opt_start, void *opts_out
 
     int opt = 0;
     int long_index = 0;
-    char *short_opts = "aRc:e:t:";
+    char *short_opts = "aARc:e:t:";
 
     optind = opt_start;
 
