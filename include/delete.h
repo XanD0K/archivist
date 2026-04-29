@@ -30,6 +30,6 @@ typedef struct
 
 // Prototypes
 ErrorCode handle_delete(int argc, char **argv, int min_args);
-ErrorCode parse_delete_options(int argc, char **argv, int opt_start, void *opts_out);
+ErrorCode parse_delete_opts(int argc, char **argv, int opt_start, void *opts_out);
 
 #endif

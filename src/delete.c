@@ -26,16 +26,18 @@
 #include "utils_filter.h"
 
 // Prototypes
-static void delete_element(const char *current_path, DeleteOptions *opts, struct dirent *namelist,
-                           Extension *ext, DeleteCounters *counters);
-static bool delete_directory(DeleteOptions *opts, const char *path, DeleteCounters *counters);
+static void delete_element(const struct dirent *namelist, DeleteOptions *opts,
+                           Extension *ext, const char *base_dir, const char *current_path,
+                           DeleteCounters *counters, ScandirFilter filter, bool nuke_del);
+static bool delete_directory(DeleteOptions *opts, const char *path,
+                             DeleteCounters *counters, ScandirFilter filter);
 static void update_log_file_delete(const char *src_path);
 
 // Setup logic for 'delete' feature
 ErrorCode handle_delete(int argc, char **argv, int min_args)
 {
     CommandContext *context = setup_command(argc, argv, min_args, print_delete_help,
-                                            parse_delete_options, sizeof(DeleteOptions));
+                                            parse_delete_opts, sizeof(DeleteOptions));
     if (!context)
     {
         return EC_MEMORY_ALLOCATION;
@@ -52,7 +54,7 @@ ErrorCode handle_delete(int argc, char **argv, int min_args)
     // Initializes counters
     DeleteCounters counters = {0};
 
-    // Retrieves user's typed extensions
+    // Retrieves user's selected extensions (-e|--extension)
     Extension *ext = NULL;
     if (opts->filter.extension && opts->filter.extension[0] != '\0')
     {
@@ -68,9 +70,20 @@ ErrorCode handle_delete(int argc, char **argv, int min_args)
     // Default return value
     ErrorCode ret = EC_SUCCESS;
 
+    // Determines the filter used in scandir()
+    ScandirFilter filter = scandir_visible_only;
+    if (opts->base.all)
+    {
+        filter = scandir_no_dot_filter;
+    }
+    else if (opts->base.almost_all)
+    {
+        filter = scandir_show_hidden_files;
+    }
+
     // Retrieves directory's content
     struct dirent **namelist = NULL;
-    int n = scandir(context->base_dir, &namelist, scandir_no_dot_filter, alphasort);
+    int n = scandir(context->base_dir, &namelist, filter, alphasort);
     if (n == -1)
     {
         fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
@@ -81,8 +94,10 @@ ErrorCode handle_delete(int argc, char **argv, int min_args)
     // Parses directory's content
     for (int i = 0; i < n; i++)
     {
-        delete_element(context->base_dir, opts, namelist[i], ext, &counters);
+        delete_element(namelist[i], opts, ext, context->base_dir,
+                       context->base_dir, &counters, filter, false);
     }
+    free_dirent(namelist, n);
 
     // Output message
     char *f_out = formatted_output(counters.dlt_size);
@@ -95,8 +110,8 @@ ErrorCode handle_delete(int argc, char **argv, int min_args)
     }
     else
     {
-        printf("Files deleted: %zu\n"
-               "Directories deleted: %zu\n",
+        printf("Deleted files: %zu\n"
+               "Deleted directories: %zu\n",
                counters.dlt_files, counters.dlt_directories);
 
         if (opts->base.human_readable)
@@ -105,7 +120,7 @@ ErrorCode handle_delete(int argc, char **argv, int min_args)
         }
         else
         {
-            printf("Space freed: %jd\n", (intmax_t)counters.dlt_size);
+            printf("Space freed: %jd bytes\n", (intmax_t)counters.dlt_size);
         }
     }
 
@@ -117,10 +132,6 @@ ErrorCode handle_delete(int argc, char **argv, int min_args)
     }
 
 cleanup:
-    if (namelist)
-    {
-        free_dirent(namelist, n);
-    }
     if (ext)
     {
         free_extensions(ext, counters.ext);
@@ -131,49 +142,132 @@ cleanup:
 }
 
 // Parses through CLI arguments for 'delete' functionality
-ErrorCode parse_delete_options(int argc, char **argv, int opt_start, void *opts_out)
+ErrorCode parse_delete_opts(int argc, char **argv, int opt_start, void *opts_out)
 {
     DeleteOptions *opts = (DeleteOptions*)opts_out;
 
-    uint32_t supported_flags = COMMON_HUMAN_READABLE |
-                               COMMON_RECURSIVE |
-                               FILTER_CONTAINS |
-                               FILTER_EXTENSION |
-                               FILTER_MAX_SIZE |
-                               FILTER_MIN_SIZE |
-                               FILTER_TYPE |
-                               ACTION_DRY_RUN |
-                               ACTION_INTERACTIVE |
-                               ACTION_VERBOSE;
+    opterr = 0;
 
-    ErrorCode ret;
-    ret = parse_common_opts(argc, argv, opt_start, &opts->base, supported_flags);
-    if (ret != EC_SUCCESS)
+    // Supported flags
+    uint32_t common_flags = COMMON_ALL |
+                            COMMON_ALMOST_ALL |
+                            COMMON_HUMAN_READABLE |
+                            COMMON_RECURSIVE;
+    uint32_t filter_flags = FILTER_CONTAINS |
+                            FILTER_EXTENSION |
+                            FILTER_MAX_SIZE |
+                            FILTER_MIN_SIZE |
+                            FILTER_TYPE;
+    uint32_t action_flags = ACTION_DRY_RUN |
+                            ACTION_INTERACTIVE |
+                            ACTION_VERBOSE;
+
+    static struct option long_opts[] =
     {
-        return ret;
-    }
-    ret = parse_filter_options(argc, argv, opt_start, &opts->filter, supported_flags);
-    if (ret != EC_SUCCESS)
+        // Common flags
+        {"all", no_argument, 0, 'a'},
+        {"almost-all", no_argument, 0, 'A'},
+        {"human-readable", no_argument, 0, 'h'},
+        {"recursive", no_argument, 0, 'R'},
+        // Filter flags
+        {"contains", required_argument, 0, 'c'},
+        {"extension", required_argument, 0, 'e'},
+        {"max-size", required_argument, 0, 0},
+        {"min-size", required_argument, 0, 0},
+        {"type", required_argument, 0, 't'},
+        // Action flags
+        {"dry-run", no_argument, 0, 'd'},
+        {"interactive", no_argument, 0, 'i'},
+        {"verbose", no_argument, 0, 'v'},
+        {NULL, 0, NULL, 0}
+    };
+
+    int opt = 0;
+    int long_index = 0;
+    char *short_opts = "aAhRc:e:t:div";
+
+    optind = opt_start;
+
+    while ((opt = getopt_long(argc, argv, short_opts, long_opts, &long_index)) != -1)
     {
-        if (ret == EC_PARSE_ERROR_SIZE)
+        switch (opt)
         {
-            errno = EIO;
-            fprintf(stderr, "Invalid size: %s\n", strerror(errno));
+            // ========== COMMON ==========
+            case 'a':  // all
+            case 'A':  // almost-all
+            case 'h':  // human-readable
+            case 'R':  // recursive
+            {
+                handle_common_flag(opt, optarg, &opts->base, common_flags);
+                break;
+            }
+            // ========== FILTER ==========
+            case 'c':  // contains
+            case 'e':  // extension
+            case 't':  // type
+            case 0:    // max-size | min-size 
+            {
+                handle_filter_flag(opt, long_opts[long_index].name, optarg, &opts->filter, filter_flags);
+                break;
+            }
+            // ========== ACTION ==========
+            case 'd':  // dry-run
+            case 'i':  // interactive
+            case 'v':  // verbose
+            {
+                handle_action_flag(opt, &opts->action, action_flags);
+                break;
+            }
+            // ========== ERROR ===========
+            case '?':
+            {
+                fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
+                return EC_PARSE_ERROR;
+            }
         }
-        return ret;
     }
-    ret = parse_action_options(argc, argv, opt_start, &opts->action, supported_flags);
-    if (ret != EC_SUCCESS)
+
+    // Checks for invalid argument
+    if (optind < argc)
     {
-        return ret;
+        fprintf(stderr, "Invalid argument(s):");
+        while (optind < argc)
+        {
+            fprintf(stderr, " %s", argv[optind++]);
+        }
+        fprintf(stderr, "\n");
+        return EC_PARSE_ERROR;
     }
-    
+
+    // Defines filter
+    if (opts->base.almost_all)
+    {
+        opts->base.all = false;
+    }
+
+    // Validates size
+    if (opts->filter.max_size == -1 || opts->filter.min_size == -1)
+    {
+        return EC_PARSE_ERROR_SIZE;
+    }
+
+    // Validates type
+    if (opts->filter.type && opts->filter.type[0] != '\0')
+    {
+        if (!validate_type(opts->filter.type))
+        {
+            return EC_PARSE_ERROR_TYPE;
+        }
+    }
+
+    opts->filter.supported = filter_flags;
     return EC_SUCCESS;
 }
 
 // Deletes elements
-static void delete_element(const char *current_path, DeleteOptions *opts, struct dirent *namelist,
-                           Extension *ext, DeleteCounters *counters)
+static void delete_element(const struct dirent *namelist, DeleteOptions *opts,
+                           Extension *ext, const char *base_dir, const char *current_path,
+                           DeleteCounters *counters, ScandirFilter filter, bool nuke_del)
 {
     // Creates full path to current element
     char full_path[PATH_MAX];
@@ -183,10 +277,13 @@ static void delete_element(const char *current_path, DeleteOptions *opts, struct
         return;
     }
 
+    struct stat st;
+    bool has_stat = false;
+
+    // Checks for directory type
     bool is_dir = (namelist->d_type == DT_DIR);
-    if (!is_dir && namelist->d_type == DT_UNKNOWN)
+    if (namelist->d_type == DT_UNKNOWN)
     {
-        struct stat st;
         if (lstat(full_path, &st) != 0)
         {
             fprintf(stderr, "Couldn't access %s: %s\n", full_path, strerror(errno));
@@ -195,85 +292,68 @@ static void delete_element(const char *current_path, DeleteOptions *opts, struct
         }
 
         is_dir = S_ISDIR(st.st_mode);
+        has_stat = true;
     }
+
+    // Gets source's and destination's suffix (cleaner output)
+    const char *src_suffix = get_suffix(full_path, base_dir);
+
     // ==================== DIRECTORIES ====================
     if (is_dir)
     {
-        // Checks for directory type
-        if (is_directory_type(opts->filter.type))
+        if (check_directory_flags(namelist, full_path, &opts->filter, filter))
         {
-            bool can_nuke = true;  // Deletes whole directory
-
-            // Checks for 'contains' filter
-            if (opts->filter.contains && opts->filter.contains[0] != '\0')
+            if (!nuke_del && opts->action.interactive)
             {
-                if (!match_name(opts->filter.contains, namelist->d_name))
+                char *prompt = NULL;
+                if (asprintf(&prompt, "Fully remove directory '%s'?", src_suffix) == -1)
                 {
-                    can_nuke = false;
-                }
-            }
-
-            // Checks for 'max-size' and 'min-size' filters
-            if (opts->filter.max_size || opts->filter.min_size)
-            {
-                off_t dir_size = 0;
-                if (!match_directory_size(full_path, opts->filter.max_size, opts->filter.min_size, &dir_size))
-                {
-                    can_nuke = false;
-                }
-            }
-
-            // Deletes whole directory
-            if (can_nuke)
-            {
-                if (opts->action.interactive)
-                {
-                    char *prompt = NULL;
-                    if (asprintf(&prompt, "Fully remove directory '%s'?", full_path) == -1)
-                    {
-                        fprintf(stderr, "Error on asprintf(): %s\n", strerror(errno));
-                        free(prompt);
-                        return;
-                    }
-                    if (!get_answer(prompt))
-                    {
-                        free(prompt);
-                        return;
-                    }
-
+                    fprintf(stderr, "Error on asprintf(): %s\n", strerror(errno));
                     free(prompt);
+                    return;
                 }
-                if (opts->action.dry_run)
+                if (!get_answer(prompt))
                 {
-                    printf("[DRY-RUN] Would fully remove directory %s\n", full_path);
+                    free(prompt);
+                    return;
+                }
+
+                nuke_del = true;
+                free(prompt);
+            }
+            if (opts->action.dry_run)
+            {
+                printf("[DRY-RUN] Would fully remove directory %s\n", src_suffix);
+                counters->dlt_directories++;
+                nuke_del = true;
+                return;
+            }
+            else
+            {
+                if (delete_directory(opts, full_path, counters, filter))
+                {
+                    if (opts->action.verbose)
+                    {
+                        printf("Fully deleted directory: '%s'\n", src_suffix);
+                    }
                     counters->dlt_directories++;
+                    log_write(LOG_SUCCESS, CMD_DELETE, full_path);
                 }
                 else
                 {
-                    if (delete_directory(opts, full_path, counters))
-                    {
-                        if (opts->action.verbose)
-                        {
-                            printf("Directory completely deleted: %s\n", full_path);
-                        }
-                        counters->dlt_directories++;
-                        log_write(LOG_SUCCESS, CMD_DELETE, full_path);
-                    }
-                    else
-                    {
-                        counters->error++;
-                        update_log_file_delete(full_path);
-                    }
+                    counters->error++;
+                    update_log_file_delete(full_path);
                 }
-                return;
             }
+
+            return;
         }
 
-        // Recursivelly calls directory's elements
+        // Recursively traverses subdirectories
         if (opts->base.recursive)
         {
             struct dirent **entry;
-            int n = scandir(full_path, &entry, scandir_no_dot_filter, alphasort);
+            int n = scandir(full_path, &entry, filter, alphasort);
             if (n == -1)
             {
                 fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
@@ -283,83 +363,42 @@ static void delete_element(const char *current_path, DeleteOptions *opts, struct
 
             for (int i = 0; i < n; i++)
             {
-                delete_element(full_path, opts, entry[i], ext, counters);
+                delete_element(entry[i], opts, ext, base_dir,
+                               full_path, counters, filter, nuke_del);
             }
             free_dirent(entry, n);
-        }
 
-        // Tries to remove current directory (if empty after recursion)
-        if (opts->action.dry_run)
-        {
-            printf("[DRY-RUN] Would remove directory %s\n", full_path);
-            counters->dlt_directories++;
-        }
-        else
-        {
-            if (rmdir(full_path) == 0)
+            // Tries to remove current directory (if empty after recursion)
+            if (!opts->action.dry_run)
             {
-                if (opts->action.verbose)
+                if (rmdir(full_path) == 0)
                 {
-                    printf("Directory deleted: %s\n", full_path);
+                    counters->dlt_directories++;
+                    log_write(LOG_SUCCESS, CMD_DELETE, full_path);
                 }
-
-                counters->dlt_directories++;
-                log_write(LOG_SUCCESS, CMD_DELETE, full_path);
-            }
-            else
-            {
-                counters->error++;
-                update_log_file_delete(full_path);
+                else
+                {
+                    counters->error++;
+                    update_log_file_delete(full_path);
+                }
             }
         }
+
+        return;
     }
 
     // ================== FILES & SLINKS ===================
-    else
+    if (!nuke_del)
     {
-        if (opts->filter.type || opts->filter.max_size || opts->filter.min_size)
-        {
-            struct stat st;
-            if (lstat(full_path, &st) != 0)
-            {
-                fprintf(stderr, "Couldn't access %s: %s\n", full_path, strerror(errno));
-                counters->error++;
-                return;
-            }
-
-            // Checks for element's type
-            if (opts->filter.type && !match_type(opts->filter.type, st.st_mode))
-            {
-                return;
-            }
-
-            // Checks for size
-            if ((opts->filter.max_size || opts->filter.min_size) &&
-                !match_size(opts->filter.max_size, opts->filter.min_size, st.st_size))
-            {
-                return;
-            }
-        }
-
-        // Checks for name equality (contains)
-        if (opts->filter.contains && opts->filter.contains[0] != '\0')
-        {
-            if (!match_name(opts->filter.contains, namelist->d_name))
-            {
-                return;
-            }
-        }
-
-        // Checks for matching extension
-        if (ext && !match_extension(ext, counters->ext, namelist->d_name))
+        if (!check_file_flags(namelist, ext, full_path, &opts->filter, counters->ext, &counters->error))
         {
             return;
         }
-
+        
         if (opts->action.interactive)
         {
             char *prompt = NULL;
-            if (asprintf(&prompt, "Delete file: '%s'?", full_path) == -1)
+            if (asprintf(&prompt, "Delete file: '%s'?", src_suffix) == -1)
             {
                 fprintf(stderr, "Error on asprintf(): %s\n", strerror(errno));
                 free(prompt);
@@ -370,49 +409,58 @@ static void delete_element(const char *current_path, DeleteOptions *opts, struct
                 free(prompt);
                 return;
             }
+
             free(prompt);
         }
+    }
 
-        struct stat st;
+    if (!has_stat)
+    {
         if (lstat(full_path, &st) != 0)
         {
             fprintf(stderr, "Couldn't access %s: %s\n", full_path, strerror(errno));
             counters->error++;
             return;
         }
-        if (opts->action.dry_run)
+    }
+
+    if (opts->action.dry_run)
+    {
+        if (opts->action.verbose)
         {
-            printf("[DRY-RUN] Would delete file %s\n", full_path);
+            printf("[DRY-RUN] Would delete file: '%s'\n", src_suffix);
+        }
+        counters->dlt_files++;
+        counters->dlt_size += st.st_size;
+    }
+    else
+    {
+        // Deletes file
+        if (remove(full_path) == 0)
+        {
+            if (opts->action.verbose)
+            {
+                printf("File deleted: '%s'\n", src_suffix);
+            }
+
             counters->dlt_files++;
             counters->dlt_size += st.st_size;
+            log_write(LOG_SUCCESS, CMD_DELETE, full_path);
         }
         else
         {
-            if (remove(full_path) == 0)
-            {
-                if (opts->action.verbose)
-                {
-                    printf("File deleted: %s\n", full_path);
-                }
-
-                counters->dlt_files++;
-                counters->dlt_size += st.st_size;
-                log_write(LOG_SUCCESS, CMD_DELETE, full_path);
-            }
-            else
-            {
-                counters->error++;
-                update_log_file_delete(full_path);
-            }
+            counters->error++;
+            update_log_file_delete(full_path);
         }
     }
 }
 
 // Fully deletes a directory
-static bool delete_directory(DeleteOptions *opts, const char *path, DeleteCounters *counters)
+static bool delete_directory(DeleteOptions *opts, const char *path,
+                             DeleteCounters *counters, ScandirFilter filter)
 {
     struct dirent **ptr = NULL;
-    int n = scandir(path, &ptr, scandir_no_dot_filter, alphasort);
+    int n = scandir(path, &ptr, filter, alphasort);
     if (n == -1)
     {
         fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
@@ -429,7 +477,7 @@ static bool delete_directory(DeleteOptions *opts, const char *path, DeleteCounte
         }
     
         bool is_dir = (ptr[i]->d_type == DT_DIR);
-        if (!is_dir && ptr[i]->d_type == DT_UNKNOWN)
+        if (ptr[i]->d_type == DT_UNKNOWN)
         {
             struct stat st;
             if (lstat(new_path, &st) != 0)
@@ -446,7 +494,7 @@ static bool delete_directory(DeleteOptions *opts, const char *path, DeleteCounte
         if (is_dir)
         {
             // Recursive call for deletion
-            delete_directory(opts, new_path, counters);
+            delete_directory(opts, new_path, counters, filter);
         }
 
         // ================== FILES & SLINKS ===================
