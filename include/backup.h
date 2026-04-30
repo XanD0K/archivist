@@ -23,6 +23,6 @@ typedef struct
 
 // Prototypes
 ErrorCode handle_backup(int argc, char **argv, int min_args);
-ErrorCode parse_backup_options(int argc, char **argv, int opt_start, void *opts_out);
+ErrorCode parse_backup_opts(int argc, char **argv, int opt_start, void *opts_out);
 
 #endif

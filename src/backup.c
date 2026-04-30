@@ -24,15 +24,16 @@
 #include "utils_filter.h"
 
 // Prototypes
-static void backup_element(struct dirent *namelist, Extension *ext, const char *current_path,
-                           char *crnt_dst_path, BackupOptions *opts, BackupCounters *counters);
+static void backup_element(const struct dirent *namelist, BackupOptions *opts, Extension *ext,
+                           const char *base_dir, const char *current_path, const char *dst_path,
+                           BackupCounters *counters, ScandirFilter filter);
 static int mark_destination_backup(const char *dst_dir, const char *base_dir);
 
 // Setup logic for 'backup' feature
 ErrorCode handle_backup(int argc, char **argv, int min_args)
 {
     CommandContext *context = setup_command(argc, argv, min_args, print_backup_help,
-                                            parse_backup_options, sizeof(BackupOptions));
+                                            parse_backup_opts, sizeof(BackupOptions));
     if (!context)
     {
         return EC_MEMORY_ALLOCATION;
@@ -46,8 +47,10 @@ ErrorCode handle_backup(int argc, char **argv, int min_args)
     }
 
     BackupOptions *opts = (BackupOptions*)context->opts;
+    // Initializes counters
     BackupCounters counters = {0};
     
+    // Retrieves user's selected extensions (-e|--extension)
     Extension *ext = NULL;
     if (opts->filter.extension && opts->filter.extension[0] != '\0')
     {
@@ -63,9 +66,20 @@ ErrorCode handle_backup(int argc, char **argv, int min_args)
     // Default return value
     ErrorCode ret = EC_SUCCESS;
 
-    // Gets directory's content
+    // Determines the filter used in scandir()
+    ScandirFilter filter = scandir_visible_only;
+    if (opts->base.all)
+    {
+        filter = scandir_no_dot_filter;
+    }
+    else if (opts->base.almost_all)
+    {
+        filter = scandir_show_hidden_files;
+    }
+
+    // Retrieves directory's content
     struct dirent **namelist = NULL;
-    int n = scandir(context->base_dir, &namelist, scandir_no_dot_filter, alphasort);
+    int n = scandir(context->base_dir, &namelist, filter, alphasort);
     if (n == -1)
     {
         fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
@@ -75,17 +89,18 @@ ErrorCode handle_backup(int argc, char **argv, int min_args)
 
     for (int i = 0; i < n; i++)
     {
-        backup_element(namelist[i], ext, context->base_dir, context->dst_dir, opts, &counters);
+        backup_element(namelist[i], opts, ext, context->base_dir, context->base_dir,
+                       context->dst_dir, &counters, filter);
     }
     free_dirent(namelist, n);
 
     // Creates flags to indicate backup directory
     mark_destination_backup(context->dst_dir, context->base_dir);
 
-    // Output Message
+    // Prints output message
     if (opts->action.dry_run)
     {
-        printf("[DRY-RUN] Would backup %zu files\n", counters.bck_files);
+        printf("[DRY-RUN] Backed up files: %zu\n", counters.bck_files);
     }
     else
     {
@@ -102,53 +117,122 @@ cleanup:
     {
         free_extensions(ext, counters.ext);
     }
+
     free_command_context(context);
     return ret;
 }
 
 // Parses through CLI arguments for 'backup' functionality
-ErrorCode parse_backup_options(int argc, char **argv, int opt_start, void *opts_out)
+ErrorCode parse_backup_opts(int argc, char **argv, int opt_start, void *opts_out)
 {
     BackupOptions *opts = (BackupOptions*)opts_out;
 
-    uint32_t supported_flags = COMMON_HUMAN_READABLE |
-                               COMMON_RECURSIVE |
-                               FILTER_CONTAINS |
-                               FILTER_EXTENSION |
-                               FILTER_MAX_SIZE |
-                               FILTER_MIN_SIZE |
-                               ACTION_DRY_RUN |
-                               ACTION_INTERACTIVE |
-                               ACTION_VERBOSE;
+    opterr = 0;
 
-    ErrorCode ret;
-    ret = parse_common_opts(argc, argv, opt_start, &opts->base, supported_flags);
-    if (ret != EC_SUCCESS)
+    // Supported flags
+    uint32_t common_flags = COMMON_ALL |
+                            COMMON_ALMOST_ALL |
+                            COMMON_RECURSIVE;
+    uint32_t filter_flags = FILTER_CONTAINS |
+                            FILTER_EXTENSION |
+                            FILTER_MAX_SIZE |
+                            FILTER_MIN_SIZE;
+    uint32_t action_flags = ACTION_DRY_RUN |
+                            ACTION_INTERACTIVE |
+                            ACTION_VERBOSE;
+
+    static struct option long_opts[] =
     {
-        return ret;
-    }
-    ret = parse_filter_options(argc, argv, opt_start, &opts->filter, supported_flags);
-    if (ret != EC_SUCCESS)
+        // Common flags
+        {"all", no_argument, 0, 'a'},
+        {"almost-all", no_argument, 0, 'A'},
+        {"recursive", no_argument, 0, 'R'},
+        // Filter flags
+        {"contains", required_argument, 0, 'c'},
+        {"extension", required_argument, 0, 'e'},
+        {"max-size", required_argument, 0, 0},
+        {"min-size", required_argument, 0, 0},
+        // Action flags
+        {"dry-run", no_argument, 0, 'd'},
+        {"interactive", no_argument, 0, 'i'},
+        {"verbose", no_argument, 0, 'v'},
+        {NULL, 0, NULL, 0}
+    };
+
+    int opt = 0;
+    int long_index = 0;
+    char *short_opts = "aARc:e:div";
+
+    optind = opt_start;
+
+    while ((opt = getopt_long(argc, argv, short_opts, long_opts, &long_index)) != -1)
     {
-        if (ret == EC_PARSE_ERROR_SIZE)
+        switch (opt)
         {
-            errno = EIO;
-            fprintf(stderr, "Invalid size: %s\n", strerror(errno));
+            // ========== COMMON ==========
+            case 'a':  // all
+            case 'A':  // almost-all
+            case 'R':  // recursive
+            {
+                handle_common_flag(opt, optarg, &opts->base, common_flags);
+                break;
+            }
+            // ========== FILTER ==========
+            case 'c':  // contains
+            case 'e':  // extension
+            case 0:    // max-size | min-size 
+            {
+                handle_filter_flag(opt, long_opts[long_index].name, optarg, &opts->filter, filter_flags);
+                break;
+            }
+            // ========== ACTION ==========
+            case 'd':  // dry-run
+            case 'i':  // interactive
+            case 'v':  // verbose
+            {
+                handle_action_flag(opt, &opts->action, action_flags);
+                break;
+            }
+            // ========== ERROR ===========
+            case '?':
+            {
+                fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
+                return EC_PARSE_ERROR;
+            }
         }
-        return ret;
-    }
-    ret = parse_action_options(argc, argv, opt_start, &opts->action, supported_flags);
-    if (ret != EC_SUCCESS)
-    {
-        return ret;
     }
 
+    // Checks for invalid argument
+    if (optind < argc)
+    {
+        fprintf(stderr, "Invalid argument(s):");
+        while (optind < argc)
+        {
+            fprintf(stderr, " %s", argv[optind++]);
+        }
+        fprintf(stderr, "\n");
+        return EC_PARSE_ERROR;
+    }
+
+    // Validates size
+    if (opts->filter.max_size == -1 || opts->filter.min_size == -1)
+    {
+        return EC_PARSE_ERROR_SIZE;
+    }
+
+    if (opts->base.almost_all)
+    {
+        opts->base.all = false;
+    }
+
+    opts->filter.supported = filter_flags;
     return EC_SUCCESS;
 }
 
 // Backs up files
-static void backup_element(struct dirent *namelist, Extension *ext, const char *current_path,
-                           char *dst_path, BackupOptions *opts, BackupCounters *counters)
+static void backup_element(const struct dirent *namelist, BackupOptions *opts, Extension *ext,
+                           const char *base_dir, const char *current_path, const char *dst_path,
+                           BackupCounters *counters, ScandirFilter filter)
 {
     char src_path[PATH_MAX];
     if (check_path_name_size(src_path, sizeof(src_path), current_path, namelist->d_name) == -1)
@@ -164,10 +248,13 @@ static void backup_element(struct dirent *namelist, Extension *ext, const char *
         return;
     }
 
+    struct stat st;
+    bool has_stat = false;
+
+    // Checks for directory type
     bool is_dir = (namelist->d_type == DT_DIR);
-    if (!is_dir && namelist->d_type == DT_UNKNOWN)
+    if (namelist->d_type == DT_UNKNOWN)
     {
-        struct stat st;
         if (lstat(src_path, &st) != 0)
         {
             fprintf(stderr, "Couldn't access %s: %s\n", src_path, strerror(errno));
@@ -176,17 +263,25 @@ static void backup_element(struct dirent *namelist, Extension *ext, const char *
         }
 
         is_dir = S_ISDIR(st.st_mode);
+        has_stat = true;
     }
+
+    // Gets source's and destination's suffix (cleaner output)
+    const char *src_suffix = get_suffix(src_path, base_dir);
+
     // ==================== DIRECTORIES ====================
     if (is_dir)
     {
-        struct stat st;
-        if (lstat(src_path, &st) != 0)
+        if (!has_stat)
         {
-            fprintf(stderr, "Couldn't access %s: %s\n", src_path, strerror(errno));
-            counters->error++;
-            return;
+            if (lstat(src_path, &st) != 0)
+            {
+                fprintf(stderr, "Couldn't access %s: %s\n", src_path, strerror(errno));
+                counters->error++;
+                return;
+            }
         }
+
         // Creates subdirectory
         if (mkdir(new_dst_path, st.st_mode & 0777) == -1 && errno != EEXIST)
         {
@@ -195,17 +290,19 @@ static void backup_element(struct dirent *namelist, Extension *ext, const char *
             return;
         }
     
+        // Recursively traverses subdirectories
         if (opts->base.recursive)
         {
             struct dirent **entry;
-            int n = scandir(src_path, &entry, scandir_no_dot_filter, alphasort);
+            int n = scandir(src_path, &entry, filter, alphasort);
             if (n == -1)
             {
                 return;
             }
             for (int i = 0; i < n; i++)
             {
-                backup_element(entry[i], ext, src_path, new_dst_path, opts, counters);
+                backup_element(entry[i], opts, ext, base_dir, src_path,
+                               new_dst_path, counters, filter);
             }
             free_dirent(entry, n);
         }
@@ -215,48 +312,14 @@ static void backup_element(struct dirent *namelist, Extension *ext, const char *
 
         return;
     }
+
     // ================== FILES & SLINKS ===================
-    else
+    if (check_file_flags(namelist, ext, src_path, &opts->filter, counters->ext, &counters->error))
     {
-        // Contains filter
-        if (opts->filter.contains && opts->filter.contains[0] != '\0')
-        {
-            if (!match_name(opts->filter.contains, namelist->d_name))
-            {
-                return;
-            }
-        }
-
-        // Extension filter
-        if (opts->filter.extension && opts->filter.extension[0] != '\0')
-        {
-            if (!match_extension(ext, counters->ext, namelist->d_name))
-            {
-                return;
-            }
-        }
-
-        // Size filter
-        if (opts->filter.max_size || opts->filter.min_size)
-        {
-            struct stat st;
-            if (lstat(src_path, &st) != 0)
-            {
-                fprintf(stderr, "Couldn't access %s: %s\n", src_path, strerror(errno));
-                counters->error++;
-                return;
-            }
-
-            if (!match_size(opts->filter.max_size, opts->filter.min_size, st.st_size))
-            {
-                return;
-            }
-        }
-
         if (opts->action.interactive)
         {
             char *prompt = NULL;
-            if (asprintf(&prompt, "Backup file %s to %s?", src_path, new_dst_path) == -1)
+            if (asprintf(&prompt, "Backup file '%s'?", src_suffix) == -1)
             {
                 fprintf(stderr, "Error on asprintf(): %s\n", strerror(errno));
                 free(prompt);
@@ -270,28 +333,35 @@ static void backup_element(struct dirent *namelist, Extension *ext, const char *
 
             free(prompt);
         }
-        if (opts->action.dry_run)
+
+        if (!has_stat)
         {
-            printf("[DRY-RUN] Would backup file '%s' to %s\n", namelist->d_name, new_dst_path);
-            counters->bck_files++;
-        }
-        else
-        {
-            struct stat st;
             if (lstat(src_path, &st) != 0)
             {
                 fprintf(stderr, "Couldn't access %s: %s\n", src_path, strerror(errno));
                 counters->error++;
                 return;
             }
-            // Checks if current files has changed
-            if (file_needs_backup(&st, new_dst_path))
+        }
+
+        bool needs_backup = file_needs_backup(&st, src_path, new_dst_path);
+        if (needs_backup)
+        {
+            if (opts->action.dry_run)
+            {
+                if (opts->action.verbose)
+                {
+                    printf("[DRY-RUN] Would backup file '%s'\n", src_suffix);
+                }
+                counters->bck_files++;
+            }
+            else
             {
                 if (copy_file(src_path, new_dst_path) == 0)
                 {
                     if ( opts->action.verbose)
                     {
-                        printf("File '%s' backed up to %s\n", namelist->d_name, new_dst_path);
+                        printf("Backed up file: '%s'\n", src_suffix);
                     }
 
                     update_log_file(LOG_SUCCESS, CMD_BACKUP, src_path, new_dst_path, false);
@@ -340,7 +410,7 @@ static int mark_destination_backup(const char *dst_dir, const char *base_dir)
 
     fprintf(file,
             "archivist-backup\n"
-            "created ai: %s\n"
+            "created at: %s\n"
             "source: %s\n",
             timestamp, base_dir);
     
