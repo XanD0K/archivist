@@ -44,6 +44,7 @@ $(ODIR)/%.o: $(SRCDIR)/%.c | $(ODIR)
 # Main Rule
 $(EXE): $(OBJ) | $(BINDIR)
 	@$(CC) $(CFLAGS) $^ -o $@
+	@ln -sf $(EXE) archivist
 
 # ======================================== TARGETS ========================================
 
@@ -55,7 +56,7 @@ archivist: all
 
 # Cleans .o files, executable, and respective directories
 clean:
-	@rm -rf $(ODIR) $(BINDIR)
+	@rm -rf $(ODIR) $(BINDIR) archivist
 
 # Cleans and rebuilds
 rebuild: clean all
