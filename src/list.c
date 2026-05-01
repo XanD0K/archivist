@@ -41,17 +41,20 @@ ErrorCode handle_list(int argc, char **argv, int min_args)
     if (context->error_code != EC_SUCCESS)
     {
         free_command_context(context);
-        return (context->error_code == EC_HELP_FLAG || context->error_code == EC_CMD_HELP_FLAG)
+        return (context->error_code == EC_CMD_HELP_FLAG)
             ? EC_SUCCESS
             : context->error_code;
     }
 
     ListOptions *opts = (ListOptions*)context->opts;
-    // Redefines values for comparation variables
+    // Redefines values for comparation functions (utils_sort.c)
     cmp_opts.reverse = (opts->reverse) ? -1 : 1;
     cmp_opts.dir_first = opts->dir_first;
     cmp_opts.ignore_case = opts->ignore_case;
     cmp_opts.base_dir = context->base_dir;
+
+    // Default return value
+    ErrorCode ret = EC_SUCCESS;
 
     // Default sorter function (by name)
     SortScandir sorter = cmp_name_scandir;
@@ -67,30 +70,29 @@ ErrorCode handle_list(int argc, char **argv, int min_args)
         sorter = get_scandir_sort_fn(opts->base.sort, sorts, len);  
         if (!sorter)
         {
-            free_command_context(context);
-            return EC_INVALID_SORTER;
+            ret = EC_INVALID_SORTER;
+            goto cleanup;
         }
     }
 
-    // Determines the filter used in scandir()
-    ScandirFilter filter = scandir_visible_only;
+    // Changes default filter used in scandir()
     if (opts->base.all)
     {
-        filter = scandir_no_dot_filter;
+        context->filter = scandir_no_dot_filter;
     }
     else if (opts->base.almost_all)
     {
-        filter = scandir_show_hidden_files;
+        context->filter = scandir_show_hidden_files;
     }
 
     // Retrieves directory's content
     struct dirent **namelist = NULL;
-    int n = scandir(context->base_dir, &namelist, filter, sorter);
+    int n = scandir(context->base_dir, &namelist, context->filter, sorter);
     if (n == -1)
     {
         fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
-        free_command_context(context);
-        return EC_SCANDIR_ERROR;
+        ret = EC_SCANDIR_ERROR;
+        goto cleanup;
     }
 
     // Initializes counters
@@ -99,14 +101,14 @@ ErrorCode handle_list(int argc, char **argv, int min_args)
     for (int i = 0; i < n; i++)
     {
         // Recursively checks directory elements and updates counters
-        list_element(namelist[i], opts, context->base_dir,
-                     context->base_dir, &counters, sorter, filter);
+        list_element(namelist[i], opts, context->base_dir, context->base_dir,
+                     &counters, sorter, context->filter);
     }
     free_dirent(namelist, n);
 
     // Prints output message
-    printf("========================================\n"
-           "Directories: %zu\n"
+    print_divider();
+    printf("Directories: %zu\n"
            "Files: %zu\n"
            "Symbolic Links: %zu\n"
            "Others: %zu\n",
@@ -122,15 +124,12 @@ ErrorCode handle_list(int argc, char **argv, int min_args)
     {
         printf("Total size: %jd bytes\n", (intmax_t)(counters.total_size));
     }
-    if (counters.errors != 0)
-    {
-        printf("(Finished listing with %zu errors)\n", counters.errors);
-        free_command_context(context);
-        return EC_LIST_FEATURE_ERROR;
-    }
+    print_counter_err_msg(counters.error);
 
+// Cleans allocated memory
+cleanup:
     free_command_context(context);
-    return EC_SUCCESS;
+    return ret;
 }
 
 // Parses through CLI arguments for 'list' functionality
@@ -204,11 +203,24 @@ ErrorCode parse_list_opts(int argc, char **argv, int opt_start, void *opts_out)
             case '?':
             {
                 fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
-                return EC_PARSE_ERROR;
+                return EC_PARSE_ERROR_UNSUPPORTED;
             }
         }
     }
 
+    // Checks for invalid argument
+    if (optind < argc)
+    {
+        fprintf(stderr, "Invalid argument(s):");
+        while (optind < argc)
+        {
+            fprintf(stderr, " %s", argv[optind++]);
+        }
+        fprintf(stderr, "\n");
+        return EC_PARSE_ERROR;
+    }
+
+    // Defines filter
     if (opts->base.almost_all)
     {
         opts->base.all = false;
@@ -226,39 +238,45 @@ static void list_element(const struct dirent *namelist, ListOptions *opts,
     char full_path[PATH_MAX];
     if (check_path_name_size(full_path, sizeof(full_path), current_path, namelist->d_name) == -1)
     {
-        counters->errors++;
         fprintf(stderr, "Path too long: %s/%s\n", current_path, namelist->d_name);
+        counters->error++;
         return;
     }
 
-    // Prints file's name
+    // Gets path's suffix
     const char *suffix = get_suffix(full_path, base_dir);
-    printf("%s\n", suffix);
 
     // Checks for content type
     bool is_dir = (namelist->d_type == DT_DIR);
     bool is_file = (namelist->d_type == DT_REG);
     bool is_slink = (namelist->d_type == DT_LNK);
 
+    struct stat st;
+    bool has_data = false;
+
     if (namelist->d_type == DT_UNKNOWN || (!is_dir && !is_file && !is_slink))
     {
         // Gets element's data
-        struct stat st;
         if (lstat(full_path, &st) != 0)
         {
-            counters->errors++;
             fprintf(stderr, "Couldn't access %s: %s\n", full_path, strerror(errno));
+            counters->error++;
             return;
         }
         is_dir = S_ISDIR(st.st_mode);
         is_file = S_ISREG(st.st_mode);
         is_slink = S_ISLNK(st.st_mode);
+
+        has_data = true;
     }
 
     // ==================== DIRECTORIES ====================
     if (is_dir)
     {
         counters->directories++;
+
+        // Prints directory's name
+        printf("%s/\n", suffix);
 
         // Recursively traverses subdirectories
         if (opts->base.recursive)
@@ -268,14 +286,16 @@ static void list_element(const struct dirent *namelist, ListOptions *opts,
             if (n == -1)
             {
                 fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
-                counters->errors++;
+                counters->error++;
+                return;
             }
             else
             {
                 for (int i = 0; i < n; i++)
                 {
                     // Recursively checks directory elements and updates counters
-                    list_element(entry[i], opts, base_dir, full_path, counters, sorter, filter);
+                    list_element(entry[i], opts, base_dir, full_path,
+                                 counters, sorter, filter);
                 }
                 free_dirent(entry, n);
             }
@@ -284,25 +304,32 @@ static void list_element(const struct dirent *namelist, ListOptions *opts,
     // ====================== SLINKS =======================
     else if (is_slink)
     {
+        // Prints slink's name
+        printf("%s\n", suffix);
+
         counters->slinks++;
     }
     // ======================= FILES =======================
     else if (is_file)
     {
+        // Prints file's name
+        printf("%s\n", suffix);
+
         // Gets element's data
-        struct stat st;
-        if (lstat(full_path, &st) == 0)
+        if (!has_data)
         {
-            counters->files++;
-            counters->total_size += st.st_size;
+            if (lstat(full_path, &st) != 0)
+            {
+                fprintf(stderr, "Couldn't access %s: %s\n", full_path, strerror(errno));
+                counters->error++;
+                return;
+            }
         }
-        else
-        {
-            fprintf(stderr, "Couldn't access %s: %s\n", full_path, strerror(errno));
-            counters->errors++;
-        }
+
+        counters->files++;
+        counters->total_size += st.st_size;
     }
-    // Fallback for other types and DT_UNKNOWN
+    // ===================== FALLBACK ======================
     else
     {
         counters->others++;

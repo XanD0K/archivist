@@ -25,7 +25,7 @@ typedef struct
     size_t files;
     size_t directories;
     size_t slinks;
-    size_t errors;
+    size_t error;
     size_t others;
     off_t total_size;
 } ListCounters;
