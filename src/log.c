@@ -21,7 +21,7 @@ static const char *get_log_path(void);
 static LogOptions parse_log_opts(int argc, char **argv, int opt_start);
 static int parse_int(char *input);
 static ErrorCode print_log(const char *log_dir, LogOptions opts);
-static bool check_cmd_line(const char *cmd);
+static bool check_cmd_line(const char *line, const char *cmd_filter);
 
 
 ErrorCode handle_log(int argc, char **argv, int min_args)
@@ -29,13 +29,13 @@ ErrorCode handle_log(int argc, char **argv, int min_args)
     // Checks for 'help' flag
     if (check_help(argc, argv[min_args]))
     {
-        print_tree_help();
+        print_log_help();
         return EC_CMD_HELP_FLAG;
     }
 
     // Parses CLI arguments
     LogOptions opts = parse_log_opts(argc, argv, min_args);
-    if (opts.limit == -1)
+    if (opts.limit == -1 || opts.err != EC_SUCCESS)
     {
         return EC_PARSE_ERROR;
     }
@@ -47,9 +47,33 @@ ErrorCode handle_log(int argc, char **argv, int min_args)
         return EC_INVALID_DIRECTORY;
     }
 
+    if (opts.erase)
+    {
+        if (access(log_dir, F_OK) != 0)
+        {
+            printf(".log file is already empty!\n");
+            return EC_SUCCESS;
+        }
+        else
+        {
+            // Tries to delete .log file
+            if (remove(log_dir) == 0)
+            {
+                printf(".log file successfully erased!\n");
+                return EC_SUCCESS;
+            }
+            else
+            {
+                fprintf(stderr, "Couldn't erase .log file: '%s'\n", strerror(errno));
+                return EC_REMOVE_ERROR;
+            }
+        }
+    }
+
     return print_log(log_dir, opts);
 }
 
+// Gets path to .log file
 static const char *get_log_path(void)
 {
     const char *home = getenv("HOME");
@@ -87,16 +111,18 @@ static const char *get_log_path(void)
 static LogOptions parse_log_opts(int argc, char **argv, int opt_start)
 {
     LogOptions opts = {0};
+    opts.err = EC_SUCCESS;
 
     static struct option long_opts[] =
     {
         {"limit", required_argument, 0, 'l'},
         {"command", required_argument, 0, 'C'},
+        {"erase", no_argument, 0, 'E'},
         {NULL, 0, NULL, 0}
     };
 
     int opt = 0, long_index = 0;
-    char *short_opts = "l:C:";
+    char *short_opts = "l:C:E";
 
     optind = opt_start;
     while((opt = getopt_long(argc, argv, short_opts, long_opts, &long_index)) != -1)
@@ -113,11 +139,29 @@ static LogOptions parse_log_opts(int argc, char **argv, int opt_start)
                 opts.cmd = optarg;
                 break;
             }
-            case '?':
+            case 'E':
             {
+                opts.erase = true;
                 break;
             }
+            case '?':
+            {
+                fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
+                opts.err = EC_PARSE_ERROR_UNSUPPORTED;
+            }
         }
+    }
+
+    // Checks for invalid argument
+    if (optind < argc)
+    {
+        fprintf(stderr, "Invalid argument(s):");
+        while (optind < argc)
+        {
+            fprintf(stderr, " %s", argv[optind++]);
+        }
+        fprintf(stderr, "\n");
+        opts.err = EC_PARSE_ERROR;
     }
 
     return opts;
@@ -156,7 +200,7 @@ static ErrorCode print_log(const char *log_dir, LogOptions opts)
         // File doesn't exist
         if (errno == ENOENT)
         {
-            printf("No log records available!\n ");
+            printf("No log records available!\n");
             return EC_SUCCESS;
         }
 
@@ -179,13 +223,13 @@ static ErrorCode print_log(const char *log_dir, LogOptions opts)
         if (opts.cmd && opts.cmd[0] != '\0')
         {
             // Check if given command is valid and if it's the command of current line
-            if (!check_value_in_list(opts.cmd, all_cmds, cmd_len))                
+            if (!check_value_in_list(opts.cmd, all_cmds, cmd_len))
             {
                 errno = EINVAL;
                 fprintf(stderr, "Invalid command '%s': %s\n", opts.cmd, strerror(errno));
                 return EC_INVALID_COMMAND;
             }
-            if (!check_cmd_line(opts.cmd))
+            if (!check_cmd_line(line, opts.cmd))
             {
                 continue;
             }
@@ -207,55 +251,27 @@ static ErrorCode print_log(const char *log_dir, LogOptions opts)
     return EC_SUCCESS;
 }
 
-static bool check_cmd_line(const char *cmd)
+static bool check_cmd_line(const char *line, const char *cmd_filter)
 {
-    // Jumps first field
-    const char *field = strchr(cmd, '|');
-    if (!field)
+    char cmd[32] = {0};
+    if (sscanf(line, "%*[^|]|%*[^|]|%31[^|]", cmd) != 1)
     {
         return false;
     }
 
-    // Jumps seconds field
-    field = strchr(field + 1, '|');
-    if (!field)
-    {
-        return false;
-    }
-
-    // Cleans start of "CMD" field
-    const char *start = field + 1;
+    char *start = cmd;
     while (*start == ' ')
     {
         start++;
     }
-
-    // Gets end of "CMD" field
-    const char *end = strchr(start, '|');
-    if (!end)
-    {
-        return false;
-    }
-    // Cleans end of "CMD" field
-    while (end > start && *(end + 1) == ' ')
+    char *end = start + strlen(start) - 1;
+    while (end > start && *end == ' ')
     {
         end--;
     }
+    *(end + 1) = '\0';
 
-    if (start == end)
-    {
-        return false;
-    }
-
-    // Compares given command with line's command
-    ptrdiff_t len = end - start;
-    if (strlen(cmd) == (size_t)len && 
-        strncasecmp(start, cmd, (size_t)len) == 0)
-    {
-        return true;
-    }
-
-    return false;
+    return (strcasecmp(start, cmd_filter) == 0);
 }
 
 // Writes record in .log file
@@ -280,7 +296,7 @@ void log_write(const char *status, const char *cmd, const char *message)
         strcpy(timestamp, "N/A");
     }
 
-    fprintf(log_file, "%s | %s | %s | %s\n", timestamp, status, cmd, message);
+    fprintf(log_file, "%-24s|%-9s|%-9s|%s\n", timestamp, status, cmd, message);  
 
     fclose(log_file);
 }
