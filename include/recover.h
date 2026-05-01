@@ -1,9 +1,6 @@
 #ifndef RECOVER_H
 #define RECOVER_H
 
-// Libraries
-#include <stdbool.h>
-
 // Headers
 #include "cli_opts.h"
 #include "error_code.h"
@@ -24,6 +21,6 @@ typedef struct
 
 // Prototypes
 ErrorCode handle_recover(int argc, char **argv, int min_args);
-ErrorCode parse_recover_options(int argc, char **argv, int opt_start, void *opts_out);
+ErrorCode parse_recover_opts(int argc, char **argv, int opt_start, void *opts_out);
 
 #endif

@@ -4,7 +4,9 @@
 // Libraries
 #include <dirent.h>
 #include <errno.h>
+#include <getopt.h>
 #include <limits.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,13 +24,15 @@
 
 // Prototypes
 static bool check_marker(const char *base_dir);
-static void recover_element(struct dirent *namelist, char *current_path, char *dst_path,
+static void recover_element(const struct dirent *namelist, const char *base_dir,
+                            const char *current_path, const char *dst_path,
                             RecoverOptions *opts, RecoverCounters *counters);
 
 // Setup logic for 'recover' feature
 ErrorCode handle_recover(int argc, char **argv, int min_args)
 {
-    CommandContext *context = setup_command(argc, argv, min_args, print_recover_help, parse_recover_options, sizeof(RecoverOptions));
+    CommandContext *context = setup_command(argc, argv, min_args, print_recover_help,
+                                            parse_recover_opts, sizeof(RecoverOptions));
     if (!context)
     {
         return EC_MEMORY_ALLOCATION;
@@ -42,32 +46,39 @@ ErrorCode handle_recover(int argc, char **argv, int min_args)
     }
 
     RecoverOptions *opts = (RecoverOptions*)context->opts;
+    // Initializes counters
     RecoverCounters counters = {0};
 
     // Checks for backed up directory marker
     if (!check_marker(context->base_dir))
     {
+        fprintf(stderr, "That's not a valid directory! Missing '.archivist-backup' marker!\n");
         free_command_context(context);
         return EC_MISSING_BACKUP_MARKER;
     }
 
+    // Retrieves directory's content
     struct dirent **namelist;
     int n = scandir(context->base_dir, &namelist, scandir_no_dot_filter, alphasort);
     if (n == -1)
     {
+        fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
+        free_command_context(context);
         return EC_SCANDIR_ERROR;
     }
+
     for (int i = 0; i < n; i++)
     {
-        recover_element(namelist[i], context->base_dir, context->dst_dir, opts, &counters);
+        recover_element(namelist[i], context->base_dir, context->base_dir,
+                        context->dst_dir, opts, &counters);
     }
     free_dirent(namelist, n);
     free_command_context(context);
 
-    // Output Message
+    // Prints output message
     if (opts->action.dry_run)
     {
-        printf("[DRY-RUN] Would recover %zu files\n", counters.rcv_files);
+        printf("[DRY-RUN] Recovered files: %zu\n", counters.rcv_files);
     }
     else
     {
@@ -83,28 +94,64 @@ ErrorCode handle_recover(int argc, char **argv, int min_args)
 }
 
 // Parses through CLI arguments for 'recover' functionality
-ErrorCode parse_recover_options(int argc, char **argv, int opt_start, void *opts_out)
+ErrorCode parse_recover_opts(int argc, char **argv, int opt_start, void *opts_out)
 {
     RecoverOptions *opts = (RecoverOptions*)opts_out;
 
-    uint32_t supported_flags = COMMON_HUMAN_READABLE |
-                               ACTION_DRY_RUN |
-                               ACTION_INTERACTIVE |
-                               ACTION_VERBOSE;
+    opterr = 0;
 
-    ErrorCode ret;
-    ret = parse_common_opts(argc, argv, opt_start, &opts->base, supported_flags);
-    if (ret != EC_SUCCESS)
+    uint32_t action_flags = ACTION_DRY_RUN |
+                            ACTION_INTERACTIVE |
+                            ACTION_VERBOSE;
+
+    static struct option long_opts[] =
     {
-        return ret;
+        // Action flags
+        {"dry-run", no_argument, 0, 'd'},
+        {"interactive", no_argument, 0, 'i'},
+        {"verbose", no_argument, 0, 'v'},
+        {NULL, 0, NULL, 0}
+    };
+
+    int opt = 0;
+    int long_index = 0;
+    char *short_opts = "div";
+
+    optind = opt_start;
+
+    while ((opt = getopt_long(argc, argv, short_opts, long_opts, &long_index)) != -1)
+    {
+        switch (opt)
+        {
+            // ========== ACTION ==========
+            case 'd':  // dry-run
+            case 'i':  // interactive
+            case 'v':  // verbose
+            {
+                handle_action_flag(opt, &opts->action, action_flags);
+                break;
+            }
+            // ========== ERROR ===========
+            case '?':
+            {
+                fprintf(stderr, "Flag not allowed: %s\n", argv[optind - 1]);
+                return EC_PARSE_ERROR;
+            }
+        }
     }
 
-    ret = parse_action_options(argc, argv, opt_start, &opts->action, supported_flags);
-    if (ret != EC_SUCCESS)
+    // Checks for invalid argument
+    if (optind < argc)
     {
-        return ret;
+        fprintf(stderr, "Invalid argument(s):");
+        while (optind < argc)
+        {
+            fprintf(stderr, " %s", argv[optind++]);
+        }
+        fprintf(stderr, "\n");
+        return EC_PARSE_ERROR;
     }
-    
+
     return EC_SUCCESS;
 }
 
@@ -126,9 +173,16 @@ static bool check_marker(const char *base_dir)
 }
 
 // Recovers files from backup directory
-static void recover_element(struct dirent *namelist, char *current_path, char *dst_path,
+static void recover_element(const struct dirent *namelist, const char *base_dir,
+                            const char *current_path, const char *dst_path,
                             RecoverOptions *opts, RecoverCounters *counters)
 {
+    // Filters backup marker
+    if (strcmp(namelist->d_name, ".archivist-backup") == 0)
+    {
+        return;
+    }
+
     char src_path[PATH_MAX];
     if (check_path_name_size(src_path, sizeof(src_path), current_path, namelist->d_name) == -1)
     {
@@ -143,10 +197,12 @@ static void recover_element(struct dirent *namelist, char *current_path, char *d
         return;
     }
 
+    struct stat st;
+    bool has_data = false;
+
     bool is_dir = (namelist->d_type == DT_DIR);
-    if (!is_dir && namelist->d_type == DT_UNKNOWN)
+    if (namelist->d_type == DT_UNKNOWN)
     {
-        struct stat st;
         if (lstat(src_path, &st) != 0)
         {
             fprintf(stderr, "Couldn't access %s: %s\n", src_path, strerror(errno));
@@ -154,21 +210,27 @@ static void recover_element(struct dirent *namelist, char *current_path, char *d
         }
 
         is_dir = S_ISDIR(st.st_mode);
+        has_data = true;
     }
+
+    // Gets source's and destination's suffix (cleaner output)
+    const char *src_suffix = get_suffix(src_path, base_dir);
+
     // ==================== DIRECTORIES ====================
     if (is_dir)
     {
-        struct stat st;
-        if (lstat(src_path, &st) != 0)
+        if (!has_data)
         {
-            fprintf(stderr, "Couldn't access %s: %s\n", src_path, strerror(errno));
-            counters->error++;
-            return;
+            if (lstat(src_path, &st) != 0)
+            {
+                fprintf(stderr, "Couldn't access '%s': %s\n", src_path, strerror(errno));
+                return;
+            }
         }
 
-        if (mkdir(new_dst_path, st.st_mode & 0777) == -1 && errno != EEXIST)
+        if (mkdir(new_dst_path, (st.st_mode & 0777)) == -1 && errno != EEXIST)
         {
-            fprintf(stderr, "Couldn't create directory %s: %s", new_dst_path, strerror(errno));
+            fprintf(stderr, "Couldn't create directory '%s': %s", new_dst_path, strerror(errno));
             counters->error++;
             return;
         }
@@ -181,7 +243,7 @@ static void recover_element(struct dirent *namelist, char *current_path, char *d
         }
         for (int i = 0; i < n; i++)
         {
-            recover_element(entry[i], src_path, new_dst_path, opts, counters);
+            recover_element(entry[i], base_dir, src_path, new_dst_path, opts, counters);
         }
         free_dirent(entry, n);
 
@@ -189,10 +251,10 @@ static void recover_element(struct dirent *namelist, char *current_path, char *d
     }
 
     // ================== FILES & SLINKS ===================
-    if (opts->action.interactive)
+    if (opts->action.interactive && !opts->action.dry_run)
     {
         char *prompt = NULL;
-        if ((asprintf(&prompt, "Recover file %s?", src_path)) == -1)
+        if ((asprintf(&prompt, "Recover file '%s'?", src_suffix)) == -1)
         {
             fprintf(stderr, "Error on asprintf(): %s\n", strerror(errno));
             free(prompt);
@@ -206,27 +268,34 @@ static void recover_element(struct dirent *namelist, char *current_path, char *d
 
         free(prompt);
     }
-    if (opts->action.dry_run)
+
+    if (!has_data)
     {
-        printf("[DRY-RUN] Would recover file %s\n", src_path);
-        counters->rcv_files++;
-    }
-    else
-    {
-        struct stat st;
         if (lstat(src_path, &st) != 0)
         {
             fprintf(stderr, "Couldn't access %s: %s\n", src_path, strerror(errno));
-            counters->error++;
             return;
         }
-        if (file_needs_backup(&st, new_dst_path))
+    }
+
+    if (file_needs_backup(&st, src_path, new_dst_path))
+    {
+        if (opts->action.dry_run)
+        {
+            if (opts->action.verbose)
+            {
+                printf("[DRY-RUN] Would recover file: '%s'\n", src_suffix);
+            }
+            
+            counters->rcv_files++;
+        }
+        else
         {
             if (copy_file(src_path, new_dst_path) == 0)
             {
                 if (opts->action.verbose)
                 {
-                    printf("File '%s' recovered to '%s'\n", namelist->d_name, new_dst_path);
+                    printf("Recovered files: '%s'\n", src_suffix);
                 }
 
                 update_log_file(LOG_SUCCESS, CMD_RECOVER, src_path, new_dst_path, false);
@@ -234,7 +303,11 @@ static void recover_element(struct dirent *namelist, char *current_path, char *d
             }
             else
             {
-                fprintf(stderr, "Couldn't recover %s: %s\n", src_path, strerror(errno));
+                if (opts->action.verbose)
+                {
+                    fprintf(stderr, "Couldn't recover file '%s': %s\n", src_suffix, strerror(errno));
+                }
+                
                 update_log_file(LOG_ERROR, CMD_RECOVER, src_path, new_dst_path, true);
                 counters->error++;
             }
