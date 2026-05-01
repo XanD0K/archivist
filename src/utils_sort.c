@@ -23,8 +23,8 @@ CompareOptions cmp_opts =
     .base_dir = NULL
 };
 
-// Returns sort function based on given sort method
-SortFlag get_sort_function(char *sort, const char **sorts, size_t len)
+// Returns sort function for scandir()
+SortScandir get_scandir_sort_fn(const char *sort, const char **sorts, size_t len)
 {
     if (!check_value_in_list(sort, sorts, len))
     {
@@ -54,6 +54,30 @@ SortFlag get_sort_function(char *sort, const char **sorts, size_t len)
     return cmp_name_scandir;
 }
 
+// Returns sort function for qsort()
+SortQsort get_qsort_sort_fn(const char *sort, const char **sorts, size_t len)
+{
+    if (!check_value_in_list(sort, sorts, len))
+    {
+        errno = EINVAL;
+        fprintf(stderr, "Invalid sort argument: %s\n", strerror(errno));
+        return NULL;
+    }
+
+    if (strcasecmp(sort, "size") == 0)
+    {
+        return cmp_size_qsort;
+    }
+    else if (strcasecmp(sort, "quantity") == 0)
+    {
+        return cmp_quantity_qsort;
+    }
+
+    // Fallback
+    return cmp_name_qsort;
+}
+
+// ======================== SCANDIR ========================
 // Organizes by name
 int cmp_name_scandir(const struct dirent **a, const struct dirent **b)
 {
@@ -282,4 +306,49 @@ int check_is_dir(const struct dirent *a, const struct dirent *b)
     }
 
     return 0;
+}
+
+// ========================= QSORT =========================
+// Sorts by name
+int cmp_name_qsort(const void *a, const void *b)
+{
+    const Extension *extA = (const Extension *)(a);
+    const Extension *extB = (const Extension *)(b);
+
+    if (strcasecmp(extA->extension, "others") == 0)
+    {
+        return 1;
+    }
+    if (strcasecmp(extB->extension, "others") == 0)
+    {
+        return -1;
+    }
+
+    return (strcasecmp(extA->extension, extB->extension));
+}
+
+// Sorts by size
+int cmp_size_qsort(const void *a, const void *b)
+{
+    const Extension *extA = (const Extension *)(a);
+    const Extension *extB = (const Extension *)(b);
+
+    if (extA->size > extB->size) 
+    {
+        return 1;
+    }
+    else if (extA->size < extB->size)
+    {
+        return -1;
+    }
+    return 0;
+}
+
+// Sorts by quantity
+int cmp_quantity_qsort(const void *a, const void *b)
+{
+    const Extension *extA = (const Extension *)(a);
+    const Extension *extB = (const Extension *)(b);
+
+    return ((int)extB->file_count - (int)extA->file_count);
 }

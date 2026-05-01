@@ -7,7 +7,8 @@
 #include <stddef.h>  // size_t
 
 // Type/Alias
-typedef int (*SortFlag)(const struct dirent **a, const struct dirent **b);
+typedef int (*SortScandir)(const struct dirent **a, const struct dirent **b);
+typedef int (*SortQsort)(const void *a, const void *b);
 
 // Structure for modifiable global variables used by 'sort' flag
 typedef struct{
@@ -20,12 +21,16 @@ typedef struct{
 extern CompareOptions cmp_opts;
 
 // Prototypes
-SortFlag get_sort_function(char *sort, const char **sorts, size_t len);
+SortScandir get_scandir_sort_fn(const char *sort, const char **sorts, size_t len);
+SortQsort get_qsort_sort_fn(const char *sort, const char **sorts, size_t len);
 int cmp_version_scandir(const struct dirent **a, const struct dirent **b);
 int cmp_name_scandir(const struct dirent **a, const struct dirent **b);
 int cmp_date_scandir(const struct dirent **a, const struct dirent **b);
 int cmp_size_scandir(const struct dirent **a, const struct dirent **b);
 int cmp_ext_scandir(const struct dirent **a, const struct dirent **b);
 int check_is_dir(const struct dirent *a, const struct dirent *b);
+int cmp_name_qsort(const void *a, const void *b);
+int cmp_size_qsort(const void *a, const void *b);
+int cmp_quantity_qsort(const void *a, const void *b);
 
 #endif
