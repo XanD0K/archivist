@@ -80,9 +80,6 @@ void print_backup_help(void)
         "       only backs up files of given extension\n"
         "       if more than 1 extension, separate them with a comma\n"
         "       e.g. .txt,\n"
-        "   -h | --human-readable\n"
-        "       outputs size of backed up files in a more readable format\n"
-        "       default: off\n"
         "   -i | --interactive\n"
         "       Asks for confirmation before backing up a file\n"
         "       default: off\n"
@@ -232,6 +229,8 @@ void print_log_help(void)
         "       defines the number of ouput rows\n"
         "   -C | --command\n"
         "       filter the output by the specified command\n"
+        "   -E | --erase\n"
+        "       clears the .log file\n"
         "\n"
         "Examples:\n"
         "   ./archivist log\n"
@@ -309,6 +308,41 @@ void print_move_help(void)
     );
 }
 
+// Prints explanation of 'recover' functionality
+void print_recover_help(void)
+{
+    puts(
+        "Usage: ./archivist recover [DIRECTORY] DIRECTORY [FLAGS]\n"
+        "\n"
+        "First DIRECTORY is the ORIGIN. It defaults to current directory (.)\n"
+        "Second DIRECTORY is the DESTINATION. It is a required argument\n"
+        "If destination directory doesn't exist, it will be created\n"
+        "\n"
+        "Flags:\n"
+        "   -d | --dry-run\n"
+        "       simulates changes, showing the result\n"
+        "       default: off\n"
+        "   -h | --human-readable\n"
+        "       outputs size of backed up files in a more readable format\n"
+        "       default: off\n"
+        "   -i | --interactive\n"
+        "       Asks for confirmation before backing up a file\n"
+        "       default: off\n"
+        "   -v | --verbose\n"
+        "       states every backed up file\n"
+        "       default: off\n"
+        "\n"
+        "Examples:\n"
+        "   ./archivist recover /folder2\n"
+        "   ./archivist recover /folder1 /folder2\n"
+        "   ./archivist recover /folder1 /folder2 --human-readable\n"
+        "   ./archivist recover /folder1 /folder2 -d\n"
+        "   ./archivist recover /folder1 /folder2 -i -v\n"
+        "\n"
+        "All commands: ./archivist help"       
+    );
+}
+
 // Prints explanation of 'rename' functionality
 void print_rename_help(void)
 {
@@ -370,41 +404,6 @@ void print_rename_help(void)
         "   ./archivist rename /folder -A -h --min-size 50K --max-size 50G\n"        
         "\n"
         "All commands: ./archivist help"
-    );
-}
-
-// Prints explanation of 'recover' functionality
-void print_recover_help(void)
-{
-    puts(
-        "Usage: ./archivist recover [DIRECTORY] DIRECTORY [FLAGS]\n"
-        "\n"
-        "First DIRECTORY is the ORIGIN. It defaults to current directory (.)\n"
-        "Second DIRECTORY is the DESTINATION. It is a required argument\n"
-        "If destination directory doesn't exist, it will be created\n"
-        "\n"
-        "Flags:\n"
-        "   -d | --dry-run\n"
-        "       simulates changes, showing the result\n"
-        "       default: off\n"
-        "   -h | --human-readable\n"
-        "       outputs size of backed up files in a more readable format\n"
-        "       default: off\n"
-        "   -i | --interactive\n"
-        "       Asks for confirmation before backing up a file\n"
-        "       default: off\n"
-        "   -v | --verbose\n"
-        "       states every backed up file\n"
-        "       default: off\n"
-        "\n"
-        "Examples:\n"
-        "   ./archivist recover /folder2\n"
-        "   ./archivist recover /folder1 /folder2\n"
-        "   ./archivist recover /folder1 /folder2 --human-readable\n"
-        "   ./archivist recover /folder1 /folder2 -d\n"
-        "   ./archivist recover /folder1 /folder2 -i -v\n"
-        "\n"
-        "All commands: ./archivist help"       
     );
 }
 
