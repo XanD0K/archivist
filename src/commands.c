@@ -22,9 +22,9 @@
 #include "utils.h"
 
 // Prototypes
-static ErrorCode validate_command(const char *cmd, const CommandEntry cmd_table[], size_t len, size_t *index);
-static bool validate_args(int argc, size_t index, const CommandEntry cmd_table[]);
-static bool check_args_count(int argc, size_t index, const CommandEntry cmd_table[]);
+static ErrorCode validate_command(const char *cmd, const CommandEntry *cmd_table, size_t len, size_t *index);
+static bool validate_args(int argc, size_t index, const CommandEntry *cmd_table);
+static bool check_args_count(int argc, size_t index, const CommandEntry *cmd_table);
 
 // Validades and executes commands
 ErrorCode execute_command(int argc, char **argv)
@@ -51,16 +51,16 @@ ErrorCode execute_command(int argc, char **argv)
     // Table with available commands
     const CommandEntry cmd_table[] = 
     {
-        {"backup", handle_backup, 3, 17},
-        {"delete", handle_delete, 2, 18},
-        {"list", handle_list, 2, 8},
-        {"log", handle_log, 2, 6},    
-        {"move", handle_move, 3, 20},
+        {"backup", handle_backup, 3, 18},
+        {"delete", handle_delete, 2, 20},
+        {"list", handle_list, 2, 12},
+        {"log", handle_log, 2, 7},    
+        {"move", handle_move, 3, 22},
         {"recover", handle_recover, 3, 8},
-        {"rename", handle_rename, 2, 18},        
-        {"report", handle_report, 2, 9},
-        {"search", handle_search, 2, 11},
-        {"tree", handle_tree, 2, 3},
+        {"rename", handle_rename, 2, 21},        
+        {"report", handle_report, 2, 11},
+        {"search", handle_search, 2, 16},
+        {"tree", handle_tree, 2, 4},
         {NULL, NULL, 0, 0}
     };
 
@@ -72,7 +72,7 @@ ErrorCode execute_command(int argc, char **argv)
     ErrorCode ret = validate_command(argv[1], cmd_table, len, &index);
     if (ret == EC_INVALID_COMMAND)
     {
-        fprintf(stderr, "Invalid command: %s!"
+        fprintf(stderr, "Invalid command: %s!\n"
                         "Check available commands with: ./archivist help\n", argv[1]);
         return ret;
     }
@@ -89,7 +89,7 @@ ErrorCode execute_command(int argc, char **argv)
 }
 
 // Checks if command is valid
-static ErrorCode validate_command(const char *cmd, const CommandEntry cmd_table[], size_t len, size_t *index)
+static ErrorCode validate_command(const char *cmd, const CommandEntry *cmd_table, size_t len, size_t *index)
 {
     for (size_t i = 0; i < len; i++)
     {
@@ -97,6 +97,7 @@ static ErrorCode validate_command(const char *cmd, const CommandEntry cmd_table[
         if (cmp == 0)
         {
             *index = i;
+            return EC_SUCCESS;
         }
         if (cmp < 0)
         {
@@ -109,7 +110,7 @@ static ErrorCode validate_command(const char *cmd, const CommandEntry cmd_table[
 }
 
 // Checks correct number of arguments for each command
-static bool validate_args(int argc, size_t index, const CommandEntry cmd_table[])
+static bool validate_args(int argc, size_t index, const CommandEntry *cmd_table)
 {
     const char *cmd = cmd_table[index].name;
 
@@ -163,7 +164,7 @@ static bool validate_args(int argc, size_t index, const CommandEntry cmd_table[]
 }
 
 // Checks if number of arguments is correct for given function
-static bool check_args_count(int argc, size_t index, const CommandEntry cmd_table[])
+static bool check_args_count(int argc, size_t index, const CommandEntry *cmd_table)
 {
     int min = cmd_table[index].min_args;
     int max = cmd_table[index].max_args;
@@ -171,7 +172,7 @@ static bool check_args_count(int argc, size_t index, const CommandEntry cmd_tabl
     return (argc >= min && argc <= max);
 }
 
-// Configures and Validates features' initial data
+// Configures and validates features' initial data
 CommandContext *setup_command(int argc, char **argv, int min_args, PrintHelp print_help,
                               ParseOptions parser, size_t opts_size)
 {
@@ -255,6 +256,7 @@ CommandContext *setup_command(int argc, char **argv, int min_args, PrintHelp pri
     ErrorCode parse_err = parser(argc, argv, context->opt_start, context->opts);
     if (parse_err != EC_SUCCESS)
     {
+        fprintf(stderr, "Invalid CLI arguments!\n");
         context->error_code = parse_err;
         return context;
     }
