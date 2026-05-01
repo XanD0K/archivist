@@ -1,17 +1,30 @@
 # Development Log
 
-## [DATE]
+
+## [2026-05-01]
 **Plans**
+- Test all features
+- Make last improvements before submitting
 
 **Challenges**
+- Fix parser to prevent
+- Hash function for check changes in file
 
 **Progress**
+- When testing `list` feature, I noticed my parser had 2 buggs:
+    - Bitmasks overlap on all 3 flags structures (`CommonOptions`, `FilterOptions` and `ActionOptions`), since they all started with `(1U << 0)`. Decided to use a 8 bit block for each structure (0-7, 8-15, 16-23, 24-31) to prevent overlapping, and kept extra space if decided to add new flags later
+    - Invalid flags weren't being correctly identified, mainly because I was doing up to 4 parsers, each one starting from the beginning `optind = opt_start`. Solved this by doing just one parser per feature, and refactoring general parsers to not use `getopts_long()`, and just check individual flags
+- When testing `tree` feature, I created the `scandir_show_hidden_files`, used in `scandir()`
+- Created `check_directory_flags()` and `check_file_flags()` and put in `utils_filter.c` file, together with all flag checker functions, to remove boilerplate on almost all features, specially the ones that use `FilterOptions` structure
+- When testing `move` feature, I was wondering other flags for the `ls` command (I already knew it had `-a | --all` and `-R | --recursive` flags). I then asked Grok(xAI) about all flags available in `ls` command, and I noticed that my new filter was similar to the flag `-A | --almost-all`, whith the difference that my filter excludes all hidden directories, while `ls -A` only excluded `"."` and `".."`. Decided to implement my own version of `-A | --almost-all` flag, which makes `scandir()` uses `scandir_show_hidden_files` filter. With that, all features (except `tree` and `recover`) can now use both `-a | --all` and `-A | --almost-all` flags
+- When testing `rename` feature, I noticed a `.ini` file was being renamed, even though it wasn't being displayed on directory (even with "show hidden files" turned on). I decided to create `is_system_file()` to warn users about renaming those files. Grok (xAI) helped me with the list of system/configuration files
+- When testing `backup` feature, I noticed my `file_needs_backup()` function, which was responsible dor the incremental backup, wasn't working properly. After digging into this problem, I discovered the issue: the directories I was working with, both using Micrsoft's OneDrive, could potentialy change the values of `st_mtim.tv_sec` and `st_mtim.tv_nsec`, used to check consistency between source and destination files. I had to remove that checker, but since keeping only the size checker wasn't relyable, I decided to implement a hash to identify changes. Used Grok's (xAI) help and spent the morning of April 30th learning how to implement the CRC32 algorithm in two ways: first one that checks each bit from every bite manually, and the second one, which is the one implemented on my program, that uses a table with all possible values for each byte (0 to 255)
+- All features successfully tested, all flags properly working, code cleaned and improved!
 
 
 ## [2026-04-22]
 **Plans**
 - Improve code, fix bugs, remove boilerplates
-- Let's polishments before testing
 
 **Challenges**
 - Walk through all files and all functions, finding the best improvements

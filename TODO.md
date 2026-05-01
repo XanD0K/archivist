@@ -2,24 +2,22 @@
 
 
 ## New features
-- [ ] `list` feature → also prints in horizontal direction (like `ls` command)
-- [ ] Helper function to get full path from a file/directory
-- [ ] `backup` feature → add hidden marker by file to prevent recovering of files that weren't backed up
-- [ ] Improve error codes (`error_code.h`) to embrace every possible error
-- [ ] `log` feature → flag to clean .log file
 
 
 ## Refactoring tasks
-- [ ] Refactor flags checker (boilerplate in the beggining of each `CMD_element()` function)
-- [ ] Modular function to create and validate path
-- [ ] Change content retriever (`struct dirent`) to remove boilerplate
+- [-] Improve error codes (`error_code.h`) to embrace every possible error
+- [ ] `list` and `search` features → improve output by adding a `/` on diretctories
+- [ ] Fix output message do display correct number of files for each directory
+- [ ] Moves `filter` variable to be a `CommandContext` field
 
 
 ## Testing
-- [ ] Test all features
 
-## BACKLOG
+
+## BACKLOG (Postponed)
 - Implement `copy` feature
+- `list` feature → also prints in horizontal direction (like `ls` command)
+- `backup` feature → add hidden marker by file to prevent recovering of files that weren't backed up
 
 
 ## DONE
@@ -67,3 +65,8 @@
 - [x] Fix `validate_args()` with new max/min commands allowed
 - [x] Change type checker to use `d_type` as default and `struct stat` as fallback
 - [x] Fix directory retriever in `move`, `backup` and `recover` features (all three need destination directory)
+- [x] Refactor flags checker (boilerplate in the beggining of each `CMD_element()` function)
+- [x] Implement flag `-A | --almost-all`, which will use `scandir_show_hidden_file` filter
+- [x] Apply `get_suffix()` on other features
+- [x] `log` feature → add flag to clean .log file (`-E|--erase`)
+- [x] Test all features

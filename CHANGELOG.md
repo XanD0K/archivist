@@ -1,20 +1,41 @@
 # Changelog
 
-## [1.0.0] - DATE
+## [1.0.0] - 2026-05-01
 ### Added
+- Added `uint32_t supported` field on `FilterOptions` structure
+- Created `check_directory_flags()` and `check_file_flags()` to centralize all checkers
+- Created new `scandir()` filter: `scandir_visible_only`
+- Added new `COMMON_ALL` flag on `CommonOptions` structure (included on all features, except `log`)
+- Create new `scandir()` filter: `scandir_show_hidden_files` → used on `tree` feature
+- Added `-A|--almost-all` flag on `CommonOptions` structure
+- Added hash calculator (CRC32 algorythm) on `backup` feature, to check changes on source and destination files
+- Added `-E|--erase` flag on `log` feature
+- Added fallback option on `copy_file()`
 
 ### Changed
+- Moved all sort logic used in `report` feature (used to determine the sorter function for `qsort()`) to `utils_sort.c`
+- Made `ignore-case` flag be exclusive to `list` feature
+- Removed `match_searched_extension()` from `search` feature (now all features use `match_extension()`)
+- Applied `const` to a some `char *` arguments
+- Changed and improved output messages on all features
+- Changed `generate_unique_name()` on `rename` feature to warn user when changing system/config files
 
 ### Fixed
+- Fixed bitmask declaration on `cli_opts.h`
+- Fixed all parsers in `cli_parse.c`, and updated all features' parsers
+- Fixed `match_directory_size()` logic
 
 ### Removed
+- Removed `match_searched_name()` from `search` feature
+- Removed `-i|--ignore-case` flag from `search` feature (now it's exclusive to `list` feature)
+- Removed unnecessary functions: `is_common_flag()`, `is_filter_flag()` and `is_action_flag`
 
 
 ## [0.9.0] - 2026-04-22
 ### Changed
 - Improved all features to rely on `d_type` to determine the type of the element
 - Changed `concatenates_prefix()` to use `memcpy()` instead of `strcpy()` + `strcat()`
-- Changed `stat()` to `lstat()`
+- Changed all `stat()` to `lstat()`
 
 ### Fixed
 - Fixed `search` feature logic, by improving filters' check and recursive call
@@ -59,7 +80,7 @@
 - Fixed recursive logic on `move` feature
 
 ### Removed
-- Removed `type` flag from `rename` feature
+- Removed `-t|_-type` flag from `rename` feature
 
 
 ## [0.5.1] - 2026-04-07
