@@ -2,19 +2,25 @@
 
 // Libraries
 #include <ctype.h>
-#include <dirent.h>
 #include <errno.h>
-#include <fcntl.h>  // open()
+#include <fcntl.h>  // O_RDONLY | O_WRONLY | O_CREAT | O_TRUNC
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
 #include <time.h>
-#include <unistd.h>  // close()
+#include <unistd.h>  // open() | close() | read()
 
 // Headers
 #include "cli_opts.h"
 #include "utils.h"
+
+// Globals (CRC32)
+static uint32_t crc32_table[256];
+static bool table_initialized = false;
+
+// Prototypes
+static void init_crc32_table(void);
 
 // Checks for valid directory, setting (.) as default, and removing trailing "/"
 char *get_valid_directory(const char *path)
@@ -29,7 +35,7 @@ char *get_valid_directory(const char *path)
 
     struct stat st;
     // Tries to fill st with directory's data
-    if (stat(base_dir, &st) != 0)
+    if (lstat(base_dir, &st) != 0)
     {
         fprintf(stderr, "Error in stat(): %s\n", strerror(errno));
         free(base_dir);
@@ -121,16 +127,39 @@ char *get_valid_destination(const char *path)
     return strdup(current_path);
 }
 
+// Filters "." and ".." to prevent infinity loop
 int scandir_no_dot_filter(const struct dirent *entry)
 {
     return (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0);
 }
 
+// Filters any element that starts with "." to prevent showing hidden content
+int scandir_visible_only(const struct dirent *entry)
+{
+    return (entry->d_name[0] != '.');
+}
+
+
+int scandir_show_hidden_files(const struct dirent *entry)
+{
+    if (entry->d_name[0] == '.')
+    {
+        if (entry->d_type == DT_DIR)
+        {
+            return 0;
+        }
+
+        return 1;
+    }
+
+    return 1;
+}
+
 // Prints a more readable output message
 char *formatted_output(off_t total_size)
 {
-    static const char *sizes[] = {"bytes", "kilobytes", "megabytes", "gigabytes", "terabytes", "petabytes"};
-    const float buffer = 1024.0;
+    static const char *sizes[] = {"B", "KB", "MB", "GB", "TB", "PB"};
+    const float buffer = 1024.0f;
 
     float result = (float)total_size;
     size_t index = 0;    
@@ -158,7 +187,7 @@ const char *get_clean_extension(const char *name)
 }
 
 // Retrieves user's selected extensions (-e flag)   
-Extension *get_all_extensions(char *exts, size_t *ext_counter)
+Extension *get_all_extensions(const char *exts, size_t *ext_counter)
 {
     if (exts == NULL || exts[0] == '\0')
     {
@@ -234,12 +263,11 @@ void free_extensions(Extension *ext, size_t ext_counter)
 }
 
 // Checks for 'help' flag
-bool check_help(int argc, char *argv)
+bool check_help(int argc, const char *argv)
 {
     if (argc == 3)
     {
-        if (strcasecmp(argv, "-h") == 0 ||
-            strcasecmp(argv, "--help") == 0 ||
+        if (strcasecmp(argv, "--help") == 0 ||
             strcasecmp(argv, "help") == 0)
             {
                 return true;
@@ -249,62 +277,16 @@ bool check_help(int argc, char *argv)
     return false;
 }
 
-// Converts user's input to off_t size
-off_t get_size(char *size)
-{
-    const off_t BUFFER = 1024;
-    char *ptr;
-    long num = strtol(size, &ptr, 10);
-    errno = 0;
-
-    if (errno == EINVAL || errno == ERANGE)
-    {
-        fprintf(stderr, "Error on strtol(): %s\n", strerror(errno));
-        return -1;
-    }
-    if (num < 0)
-    {
-        fprintf(stderr, "Size can't be negative: %ld\n", num);
-        return -1;
-    }
-    if (ptr == size)
-    {
-        fprintf(stderr, "No digits were found!\n");
-        return -1;
-    }
-
-    num = (off_t)num;
-
-    if(ptr == NULL || strcasecmp(ptr, "B") == 0)
-    {
-        return num;
-    }
-    else if (strcasecmp(ptr, "K") == 0 || strcasecmp(ptr, "KB") == 0)
-    {
-        return num * BUFFER;
-    }
-    else if (strcasecmp(ptr, "M") == 0 || strcasecmp(ptr, "MB") == 0)
-    {
-        return num * BUFFER * BUFFER;
-    }
-    else if (strcasecmp(ptr, "G") == 0 || strcasecmp(ptr, "GB") == 0)
-    {
-        return num * BUFFER * BUFFER * BUFFER;
-    }
-    else if (strcasecmp(ptr, "T") == 0 || strcasecmp(ptr, "TB") == 0)
-    {
-        return num * BUFFER * BUFFER * BUFFER * BUFFER;
-    }
-
-    return -1;
-}
-
 // Gets directory's suffix
-const char *get_suffix(char newpath[], const char *base_dir)
+const char *get_suffix(const char *path, const char *base_dir)
 {
-    const char *suffix = newpath + strlen(base_dir);
+    const char *suffix = path + strlen(base_dir);
+    if (*suffix == '/')
+    {
+        suffix++;
+    }
 
-    return (*suffix == '/') ? suffix++ : suffix;
+    return suffix;
 }
 
 // Gets user's input
@@ -361,23 +343,26 @@ int check_path_name_size(char *dst, size_t len, const char *prefix, const char *
 }
 
 // Compares source and destiny files
-bool file_needs_backup(struct stat *st_src, const char *dst_dir)
+bool file_needs_backup(struct stat *st_src, const char *src_dir, const char *dst_dir)
 {
     // File doesn't exist on destiny directory
     struct stat st_dst;
-    if (stat(dst_dir, &st_dst) != 0)
+    if (lstat(dst_dir, &st_dst) != 0)
     {
         return true;
     }
 
-    // Checks for changes in file (mtim | size)
-    if (st_src->st_mtim.tv_sec != st_dst.st_mtim.tv_sec ||  // Compares seconds
-        st_src->st_mtim.tv_nsec != st_dst.st_mtim.tv_nsec)  // Compares nanoseconds
-    {
-        return true;
-    }
-
+    // Compares files' size
     if (st_src->st_size != st_dst.st_size)
+    {
+        return true;
+    }
+
+    // Compares files's hash
+    uint32_t hash_src = quick_file_hash(src_dir);
+    uint32_t hash_dst = quick_file_hash(dst_dir);
+
+    if (hash_src != hash_dst)
     {
         return true;
     }
@@ -388,7 +373,6 @@ bool file_needs_backup(struct stat *st_src, const char *dst_dir)
 // Copies file from one directory to another
 int copy_file(const char *src_path, const char *dst_path)
 {
-
     int input = open(src_path, O_RDONLY);
     if (input < 0)
     {
@@ -410,15 +394,32 @@ int copy_file(const char *src_path, const char *dst_path)
     {
         // Loop keeps running while there is data to be copied
     }
+    
+    // Fallback
+    if (ret < 0)
+    {
+        char buffer[chunk];
+        ssize_t bytes;
+
+        while ((bytes = read(input, buffer, sizeof(buffer))) > 0)
+        {
+            if (write(output, buffer, (size_t)bytes) != bytes)
+            {
+                close(input);
+                close(output);
+                return -1;
+            }
+        }
+        ret = (bytes == 0) ? 0 : -1;
+    }
 
     close(input);
     close(output);
-
     return (ret == 0) ? 0 : -1;
 }
 
 // Checks if given value is in a list of values
-bool check_value_in_list(char *name, const char *list[], size_t len)
+bool check_value_in_list(const char *name, const char *list[], size_t len)
 {
     bool found = false;
     for (size_t i = 0; i < len; i++)
@@ -451,4 +452,123 @@ void free_dirent(struct dirent **tmp,int len)
     }
 
     free(tmp);
+}
+
+// Validates 'type' flag
+char *validate_type(const char *type)
+{
+    if (!type || type[0] == '\0')
+    {
+        return NULL;
+    }
+
+    if (is_directory_type(type) ||
+        is_slink_type(type) ||
+        is_file_type(type))
+    {
+        return (char *)type;
+    }
+
+    return NULL;
+}
+
+bool is_directory_type (const char *type)
+{
+    if (!type || type[0] == '\0')
+    {
+        return false;
+    }
+
+    return (strcasecmp(type, "d") == 0 ||
+            strcasecmp(type, "dir") == 0 ||
+            strcasecmp(type, "directory") == 0);
+}
+
+bool is_slink_type (const char *type)
+{
+    if (!type || type[0] == '\0')
+    {
+        return false;
+    }
+
+    return (strcasecmp(type, "sl") == 0 ||
+            strcasecmp(type, "slink") == 0 ||
+            strcasecmp(type, "symbolic-link") == 0);
+}
+
+bool is_file_type (const char *type)
+{
+    if (!type || type[0] == '\0')
+    {
+        return false;
+    }
+
+    return (strcasecmp(type, "f") == 0 ||
+            strcasecmp(type, "file") == 0);
+}
+
+// Populates the crc32_table with every possible value for 8 bits
+static void init_crc32_table(void)
+{
+    // For each possible byte value (0 to 255)
+    for (uint32_t i = 0; i < 256; i++)
+    {
+        uint32_t crc = i;
+        // For every bit of current byte
+        for (int j = 0; j < 8; j++)
+        {
+            int bit = crc & 1;                       // Gets least significant bit (right one)
+            uint32_t mask = (uint32_t)(-bit);        // 0xFFFFFFFF if bit == 1, else 0
+            crc = (crc >> 1) ^ (0xEDB88320 & mask);  // if bit == 1, XOR with CRC32 polynomial, else shift right
+        }
+        crc32_table[i] = crc;
+    }
+}
+
+// Gets hash value for given chunk of data
+uint32_t crc32(const void *data, size_t len)
+{
+    // Initializes table on first run
+    if(!table_initialized)
+    {
+        init_crc32_table();
+        table_initialized = true;
+    }
+
+    uint32_t crc = 0xFFFFFFFF;
+    const uint8_t *buf = (const uint8_t *)data;
+
+    for (size_t i = 0; i < len; i++)
+    {
+        // Finds value on table for each byte
+        crc = crc32_table[(crc ^ buf[i]) & 0xFF] ^ (crc >> 8);
+    }
+
+    // Bitwise inversion (standard CRC32)
+    return crc ^ 0xFFFFFFFF;
+}
+
+// Calculates hash value for given file path
+uint32_t quick_file_hash(const char *path)
+{
+    int file = open(path, O_RDONLY);
+    if (file < 0)
+    {
+        return 0;
+    }
+
+    // Reads 64KB of data
+    const size_t MAX = 64 * 1024;
+    uint8_t buffer[MAX];
+
+    ssize_t bytes = read(file, buffer, sizeof(buffer));
+    close(file);
+
+    if (bytes <= 0)
+    {
+        return 0;
+    }
+
+    // Returns CRC32 of the data
+    return crc32(buffer, (size_t)bytes);
 }
