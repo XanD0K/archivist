@@ -40,7 +40,7 @@ ErrorCode handle_search(int argc, char **argv, int min_args)
     if (context->error_code != EC_SUCCESS)
     {
         free_command_context(context);
-        return (context->error_code == EC_HELP_FLAG || context->error_code == EC_CMD_HELP_FLAG)
+        return (context->error_code == EC_CMD_HELP_FLAG)
             ? EC_SUCCESS
             : context->error_code;
     }
@@ -66,20 +66,19 @@ ErrorCode handle_search(int argc, char **argv, int min_args)
     // Default return value
     ErrorCode ret = EC_SUCCESS;
 
-    // Determines the filter used in scandir()
-    ScandirFilter filter = scandir_visible_only;
+    // Changes default filter used in scandir()
     if (opts->base.all)
     {
-        filter = scandir_no_dot_filter;
+        context->filter = scandir_no_dot_filter;
     }
     else if (opts->base.almost_all)
     {
-        filter = scandir_show_hidden_files;
+        context->filter = scandir_show_hidden_files;
     }
 
     // Retrieves directory's content
     struct dirent **namelist = NULL;
-    int n = scandir(context->base_dir, &namelist, filter, alphasort);
+    int n = scandir(context->base_dir, &namelist, context->filter, alphasort);
     if (n == -1)
     {
         fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
@@ -90,7 +89,7 @@ ErrorCode handle_search(int argc, char **argv, int min_args)
     for (int i = 0; i < n; i++)
     {
         search_element(namelist[i], opts, ext, context->base_dir,
-                       context->base_dir, &counters, filter);
+                       context->base_dir, &counters, context->filter);
     }
     free_dirent(namelist, n);
 
@@ -101,14 +100,12 @@ ErrorCode handle_search(int argc, char **argv, int min_args)
     }
     else
     {
+        print_divider();
         printf("Total elements found: %zu\n", counters.searched);
     }
+    print_counter_err_msg(counters.error);
 
-    if (counters.error != 0)
-    {
-        printf("(Finished with %zu erros)\n", counters.error);
-    }
-
+// Cleans allocated memory
 cleanup:
     if (ext)
     {
@@ -174,7 +171,8 @@ ErrorCode parse_search_opts(int argc, char **argv, int opt_start, void *opts_out
             case 't':  // type
             case 0:    // max-size | min-size 
             {
-                handle_filter_flag(opt, long_opts[long_index].name, optarg, &opts->filter, filter_flags);
+                handle_filter_flag(opt, long_opts[long_index].name, optarg,
+                                   &opts->filter, filter_flags);
                 break;
             }
             // ========== ERROR ===========
@@ -185,16 +183,38 @@ ErrorCode parse_search_opts(int argc, char **argv, int opt_start, void *opts_out
             }
         }
     }
-    
+
+    // Checks for invalid argument
+    if (optind < argc)
+    {
+        fprintf(stderr, "Invalid argument(s):");
+        while (optind < argc)
+        {
+            fprintf(stderr, " %s", argv[optind++]);
+        }
+        fprintf(stderr, "\n");
+        return EC_PARSE_ERROR;
+    }
+
+    // Defines filter
+    if (opts->base.almost_all)
+    {
+        opts->base.all = false;
+    }
+   
     // Validates size
     if (opts->filter.max_size == -1 || opts->filter.min_size == -1)
     {
         return EC_PARSE_ERROR_SIZE;
     }
 
-    if (opts->base.almost_all)
+    // Validates type
+    if (opts->filter.type && opts->filter.type[0] != '\0')
     {
-        opts->base.all = false;
+        if (!validate_type(opts->filter.type))
+        {
+            return EC_PARSE_ERROR_TYPE;
+        }
     }
 
     opts->filter.supported = filter_flags;
@@ -211,8 +231,12 @@ static void search_element(const struct dirent *namelist, SearchOptions *opts,
     if (check_path_name_size(full_path, sizeof(full_path), current_path, namelist->d_name) == -1)
     {
         fprintf(stderr, "Path too long: %s/%s\n", current_path, namelist->d_name);
+        counters->error++;
         return;
     }
+
+    // Gets path's suffix
+    const char *suffix = get_suffix(full_path, base_dir);
 
     // Checks for content type
     bool is_dir = (namelist->d_type == DT_DIR);
@@ -233,15 +257,14 @@ static void search_element(const struct dirent *namelist, SearchOptions *opts,
         is_slink = S_ISLNK(st.st_mode);
     }
 
-    // ==================== Directories ====================
+    // ==================== DIRECTORIES ====================
     if (is_dir)
     {
-        // Checks if current directory validity based on chosen flags
-        if (check_directory_flags(namelist, full_path, &opts->filter))
+        // Checks directory's validity
+        if (check_directory_flags(namelist, full_path, &opts->filter, filter))
         {
             // Prints found element
-            const char *suffix = get_suffix(full_path, base_dir);
-            printf("%s\n", suffix);
+            printf("%s/\n", suffix);
             counters->searched++;
         }
 
@@ -258,20 +281,22 @@ static void search_element(const struct dirent *namelist, SearchOptions *opts,
             }
             for (int i = 0; i < n; i++)
             {
-                search_element(entry[i], opts, ext, base_dir, full_path, counters, filter);
+                search_element(entry[i], opts, ext, base_dir,
+                               full_path, counters, filter);
             }
             free_dirent(entry, n);
         }
 
         return;
     }
-    // ======================= Files =======================
+    // ======================= FILES =======================
     else if (is_file || is_slink)
     {
-        if (check_file_flags(namelist, ext, full_path, &opts->filter, counters->ext, &counters->error))
+        // Checks file's validity
+        if (check_file_flags(namelist, ext, full_path, &opts->filter,
+                             counters->ext, &counters->error))
         {
             // Prints found element
-            const char *suffix = get_suffix(full_path, base_dir);
             printf("%s\n", suffix);
             counters->searched++;
         }
