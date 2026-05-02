@@ -43,7 +43,7 @@ ErrorCode handle_move(int argc, char **argv, int min_args)
     if (context->error_code != EC_SUCCESS)
     {
         free_command_context(context);
-        return (context->error_code == EC_HELP_FLAG || context->error_code == EC_CMD_HELP_FLAG)
+        return (context->error_code == EC_CMD_HELP_FLAG)
             ? EC_SUCCESS
             : context->error_code;
     }
@@ -68,20 +68,19 @@ ErrorCode handle_move(int argc, char **argv, int min_args)
         }
     }
 
-    // Determines the filter used in scandir()
-    ScandirFilter filter = scandir_visible_only;
+    // Changes default filter used in scandir()
     if (opts->base.all)
     {
-        filter = scandir_no_dot_filter;
+        context->filter = scandir_no_dot_filter;
     }
     else if (opts->base.almost_all)
     {
-        filter = scandir_show_hidden_files;
+        context->filter = scandir_show_hidden_files;
     }
 
     // Retrieves directory's content
     struct dirent **namelist = NULL;
-    int n = scandir(context->base_dir, &namelist, filter, alphasort);
+    int n = scandir(context->base_dir, &namelist, context->filter, alphasort);
     if (n == -1)
     {
         fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
@@ -92,7 +91,7 @@ ErrorCode handle_move(int argc, char **argv, int min_args)
     for (int i = 0; i < n; i++)
     {
         move_element(namelist[i], opts, ext, context->base_dir, context->base_dir,
-                     context->dst_dir, &counters, filter, false);
+                     context->dst_dir, &counters, context->filter, false);
     }
     free_dirent(namelist, n);
 
@@ -108,11 +107,7 @@ ErrorCode handle_move(int argc, char **argv, int min_args)
         printf("Moved files: %zu\n"
                "Moved directories: %zu\n", counters.moved_files, counters.moved_directories);
     }
-
-    if (counters.error != 0)
-    {
-        printf("(Finished with %zu errors)\n", counters.error);
-    }
+    print_counter_err_msg(counters.error);
 
 cleanup:
     if (ext)
@@ -189,7 +184,8 @@ ErrorCode parse_move_opts(int argc, char **argv, int opt_start, void *opts_out)
             case 't':  // type
             case 0:    // max-size | min-size 
             {
-                handle_filter_flag(opt, long_opts[long_index].name, optarg, &opts->filter, filter_flags);
+                handle_filter_flag(opt, long_opts[long_index].name, optarg,
+                                   &opts->filter, filter_flags);
                 break;
             }
             // ========== ACTION ==========
@@ -220,6 +216,18 @@ ErrorCode parse_move_opts(int argc, char **argv, int opt_start, void *opts_out)
                 return EC_PARSE_ERROR;
             }
         }
+    }
+
+    // Checks for invalid argument
+    if (optind < argc)
+    {
+        fprintf(stderr, "Invalid argument(s):");
+        while (optind < argc)
+        {
+            fprintf(stderr, " %s", argv[optind++]);
+        }
+        fprintf(stderr, "\n");
+        return EC_PARSE_ERROR;
     }
 
     // Defines filter
@@ -257,6 +265,7 @@ static void move_element(const struct dirent *namelist, MoveOptions *opts, Exten
     if (check_path_name_size(full_path, sizeof(full_path), current_path, namelist->d_name) == -1)
     {
         fprintf(stderr, "Path too long: %s/%s\n", current_path, namelist->d_name);
+        counters->error++;
         return;
     }
 
@@ -265,6 +274,7 @@ static void move_element(const struct dirent *namelist, MoveOptions *opts, Exten
     if (check_path_name_size(new_dst_dir, sizeof(new_dst_dir), dst_dir, namelist->d_name) == -1)
     {
         fprintf(stderr, "Path too long: %s/%s\n", dst_dir, namelist->d_name);
+        counters->error++;
         return;
     }
 
@@ -289,64 +299,66 @@ static void move_element(const struct dirent *namelist, MoveOptions *opts, Exten
     // ==================== DIRECTORIES ====================
     if (is_dir)
     {
-        if (is_directory_type(opts->filter.type))
+        // Checks directory's validity
+        if (check_directory_flags(namelist, full_path, &opts->filter, filter))
         {
-            if (check_directory_flags(namelist, full_path, &opts->filter, filter))
+            // Gets user's confirmation before moving directory
+            if (!nuke_move && opts->action.interactive && !opts->action.dry_run)
             {
-                // Gets user's confirmation before moving directory
-                if (!nuke_move && opts->action.interactive)
+                char *prompt = NULL;
+                if (asprintf(&prompt, "Fully move directory '%s'?", src_suffix) == -1)
                 {
-                    char *prompt = NULL;
-                    if (asprintf(&prompt, "Fully move directory '%s'?", src_suffix) == -1)
-                    {
-                        fprintf(stderr, "Error on asprintf(): %s\n", strerror(errno));
-                        free(prompt);
-                        return;
-                    }            
-                    if (!get_answer(prompt))
+                    fprintf(stderr, "Error on asprintf(): %s\n", strerror(errno));
+                    counters->error++;
+                    if (prompt)
                     {
                         free(prompt);
-                        return;
+                    }
+                    return;
+                }            
+                if (!get_answer(prompt))
+                {
+                    free(prompt);
+                    return;
+                }
+
+                nuke_move = true;
+                free(prompt);
+            }
+
+            if (opts->action.dry_run)
+            {
+                printf("[DRY-RUN] Would move whole directory '%s'\n", src_suffix);
+                counters->moved_directories++;
+                nuke_move = true;
+                return;
+            }
+            else
+            {
+                // Checks if destination already exists
+                if (access(new_dst_dir, F_OK) != 0)
+                {
+                    // Creates new subdirectory on destination
+                    if (rename(full_path, new_dst_dir) == 0)
+                    {
+                        if (opts->action.verbose)
+                        {
+                            printf("Fully moved directory: '%s'\n", src_suffix);
+                        }
+                        counters->moved_directories++;
+                        update_log_file(LOG_SUCCESS, CMD_MOVE, namelist->d_name, dst_dir, false);
+                    }
+                    else
+                    {
+                        counters->error++;
+                        update_log_file(LOG_ERROR, CMD_MOVE, namelist->d_name, dst_dir, true);
                     }
 
-                    free(prompt);
-                }
-                if (opts->action.dry_run)
-                {
-                    printf("[DRY-RUN] Would move whole directory '%s'\n", src_suffix);
-                    counters->moved_directories++;
-                    nuke_move = true;
                     return;
                 }
                 else
                 {
-                    // Checks if destination already exists
-                    if (access(new_dst_dir, F_OK) != 0)
-                    {
-                        // Creates new subdirectory on destination
-                        if (rename(full_path, new_dst_dir) == 0)
-                        {
-                            if (opts->action.verbose)
-                            {
-                                printf("Moved directory: '%s'\n", src_suffix);
-                            }
-
-                            update_log_file(LOG_SUCCESS, CMD_MOVE, namelist->d_name, dst_dir, false);
-                            counters->moved_directories++;
-                        }
-                        else
-                        {
-                            update_log_file(LOG_ERROR, CMD_MOVE, namelist->d_name, dst_dir, true);
-                            counters->error++;
-                        }
-
-                        return;
-                    }
-                    if (!nuke_move)
-                    {
-                        printf("Destination '%s' already exist! Merging contents...\n", src_suffix);
-                        nuke_move = true;
-                    }
+                    printf("Destination '%s' already exist! Merging contents...\n", src_suffix);
                 }
             }
         }
@@ -365,6 +377,7 @@ static void move_element(const struct dirent *namelist, MoveOptions *opts, Exten
                     if (mkdir(new_dst_dir, 0755) != 0)
                     {
                         fprintf(stderr, "Failed to create directory %s: %s\n", new_dst_dir, strerror(errno));
+                        counters->error++;
                         return;
                     }
 
@@ -400,8 +413,8 @@ static void move_element(const struct dirent *namelist, MoveOptions *opts, Exten
                 // Tries to remove destination directory (if empty after recursion)
                 if (rmdir(new_dst_dir) != 0 && errno == ENOTEMPTY)
                 {
-                    // Increases counter
                     counters->moved_directories++;
+                    update_log_file(LOG_SUCCESS, CMD_MOVE, current_path, dst_dir, false);
                 }
             }
 
@@ -415,7 +428,9 @@ static void move_element(const struct dirent *namelist, MoveOptions *opts, Exten
     // ================== FILES & SLINKS ===================
     if (!nuke_move)
     {
-        if (!check_file_flags(namelist, ext, full_path, &opts->filter, counters->ext, &counters->error))
+        // Checks file's validity
+        if (!check_file_flags(namelist, ext, full_path, &opts->filter,
+                              counters->ext, &counters->error))
         {
             return;
         }
@@ -426,9 +441,11 @@ static void move_element(const struct dirent *namelist, MoveOptions *opts, Exten
     char *final_dst = NULL;
     if (existed)
     {
-        final_dst = match_existed_file(dst_dir, new_dst_dir, namelist->d_name, opts->skip, opts->force);
+        final_dst = match_existed_file(dst_dir, new_dst_dir, namelist->d_name,
+                                       opts->skip, opts->force);
         if (!final_dst)
         {
+            counters->error++;
             return;
         }
     }
@@ -438,14 +455,18 @@ static void move_element(const struct dirent *namelist, MoveOptions *opts, Exten
     }
 
     // Gets user's confirmation before moving file
-    if (!nuke_move && opts->action.interactive)
+    if (!nuke_move && opts->action.interactive && !opts->action.dry_run)
     {
         char *prompt = NULL;
         if (asprintf(&prompt, "Move file '%s'?", src_suffix) == -1)
         {
             fprintf(stderr, "Error on asprintf(): %s\n", strerror(errno));
+            counters->error++;
             free(final_dst);
-            free(prompt);
+            if (prompt)
+            {
+                free(prompt);
+            }
             return;
         }
         if (!get_answer(prompt))
@@ -478,13 +499,13 @@ static void move_element(const struct dirent *namelist, MoveOptions *opts, Exten
                 printf("Moved file: '%s'\n", src_suffix);
             }
 
-            update_log_file(LOG_SUCCESS, CMD_MOVE, current_path, dst_dir, false);
             counters->moved_files++;
+            update_log_file(LOG_SUCCESS, CMD_MOVE, current_path, dst_dir, false);
         }
         else
         {
-            update_log_file(LOG_ERROR, CMD_MOVE, current_path, dst_dir, true);
             counters->error++;
+            update_log_file(LOG_ERROR, CMD_MOVE, current_path, dst_dir, true);
         }
     }
 
@@ -495,11 +516,13 @@ static void move_element(const struct dirent *namelist, MoveOptions *opts, Exten
 static char *match_existed_file(const char *dst_dir, const char *new_dst_dir,
                                 const char *name, bool skip, bool force)
 {
+    // (-s|--skip)
     if (skip)
     {
         return NULL;
     }
 
+    // (-f|--force)
     if (force)
     {
         remove(new_dst_dir);
