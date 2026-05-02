@@ -8,6 +8,7 @@
 #include <sys/types.h>  // off_t
 
 // Headers
+#include "commands.h"
 #include "cli_opts.h"
 
 // Prototypes
