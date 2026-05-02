@@ -30,7 +30,7 @@ static void rename_element(const struct dirent *namelist, RenameOptions *opts, E
                            RenameCounters *counters, ScandirFilter filter);
 static char *generate_unique_name(const char *current_path, const char *old_name,
                                   const char *input_name, size_t *counter);
-static bool is_system_file (const char *name);
+static bool is_system_file(const char *name);
 
 // Setup logic for 'rename' feature
 ErrorCode handle_rename(int argc, char **argv, int min_args)
@@ -44,7 +44,7 @@ ErrorCode handle_rename(int argc, char **argv, int min_args)
     if (context->error_code != EC_SUCCESS)
     {
         free_command_context(context);
-        return (context->error_code == EC_HELP_FLAG || context->error_code == EC_CMD_HELP_FLAG)
+        return (context->error_code == EC_CMD_HELP_FLAG)
             ? EC_SUCCESS
             : context->error_code;
     }
@@ -90,20 +90,19 @@ ErrorCode handle_rename(int argc, char **argv, int min_args)
     // Default return value
     ErrorCode ret = EC_SUCCESS;
 
-    // Determines the filter used in scandir()
-    ScandirFilter filter = scandir_visible_only;
+    // Changes default filter used in scandir()
     if (opts->base.all)
     {
-        filter = scandir_no_dot_filter;
+        context->filter = scandir_no_dot_filter;
     }
     else if (opts->base.almost_all)
     {
-        filter = scandir_show_hidden_files;
+        context->filter = scandir_show_hidden_files;
     }
 
     // Retrieves directory's content
     struct dirent **namelist = NULL;
-    int n = scandir(context->base_dir, &namelist, filter, sorter);
+    int n = scandir(context->base_dir, &namelist, context->filter, sorter);
     if (n == -1)
     {
         fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
@@ -114,24 +113,13 @@ ErrorCode handle_rename(int argc, char **argv, int min_args)
     for (int i = 0; i < n; i++)
     {
         rename_element(namelist[i], opts, ext, context->base_dir, context->base_dir,
-                       sorter, &counters, filter);
+                       sorter, &counters, context->filter);
     }
     free_dirent(namelist, n);
 
     // Prints output message
-    if (opts->action.dry_run)
-    {
-        printf("[DRY-RUN] Renamed files: %zu\n", counters.rnmd_files);
-    }
-    else
-    {
-        printf("Renamed files: %zu\n", counters.rnmd_files);
-    }
-
-    if (counters.error != 0)
-    {
-        printf("(Finished with %zu errors)\n", counters.error);
-    }
+    print_output_message("Renamed", opts->action, counters.rnmd_files);
+    print_counter_err_msg(counters.error);
 
 cleanup:
     if (ext)
@@ -209,7 +197,8 @@ ErrorCode parse_rename_opts(int argc, char **argv, int opt_start, void *opts_out
             case 'e':  // extension
             case 0:    // max-size | min-size 
             {
-                handle_filter_flag(opt, long_opts[long_index].name, optarg, &opts->filter, filter_flags);
+                handle_filter_flag(opt, long_opts[long_index].name, optarg,
+                                   &opts->filter, filter_flags);
                 break;
             }
             // ========== ACTION ==========
@@ -253,6 +242,7 @@ ErrorCode parse_rename_opts(int argc, char **argv, int opt_start, void *opts_out
         return EC_PARSE_ERROR_SIZE;
     }
 
+    // Defines filter
     if (opts->base.almost_all)
     {
         opts->base.all = false;
@@ -260,6 +250,7 @@ ErrorCode parse_rename_opts(int argc, char **argv, int opt_start, void *opts_out
 
     if (!opts->name || opts->name[0] == '\0')
     {
+        // Default
         opts->name = "file";
     }
 
@@ -272,10 +263,12 @@ static void rename_element(const struct dirent *namelist, RenameOptions *opts, E
                            const char *base_dir, const char *current_path, SortScandir sorter,
                            RenameCounters *counters, ScandirFilter filter)
 {
+    // Creates full path to current element (source)
     char old_path[PATH_MAX];
     if (check_path_name_size(old_path, sizeof(old_path), current_path, namelist->d_name) == -1)
     {
         fprintf(stderr, "Path too long: %s/%s\n", current_path, namelist->d_name);
+        counters->error++;
         return;
     }
 
@@ -306,6 +299,8 @@ static void rename_element(const struct dirent *namelist, RenameOptions *opts, E
             int n = scandir(old_path, &entry, filter, sorter);
             if (n == -1)
             {
+                fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
+                counters->error++;
                 return;
             }
 
@@ -321,26 +316,34 @@ static void rename_element(const struct dirent *namelist, RenameOptions *opts, E
     }
 
     // ================== FILES & SLINKS ===================
-    if (check_file_flags(namelist, ext, old_path, &opts->filter, counters->ext, &counters->error))
+    // Checks file's validity
+    if (check_file_flags(namelist, ext, old_path, &opts->filter,
+                         counters->ext, &counters->error))
     {
         // Gets new name
-        char *new_path = generate_unique_name(current_path, namelist->d_name, opts->name, &counters->name);
+        char *new_path = generate_unique_name(current_path, namelist->d_name,
+                                              opts->name, &counters->name);
         if (!new_path)
         {
+            counters->error++;
             return;
         }
 
         // Gets new_name suffix (cleaner output)
         const char *new_suffix = get_suffix(new_path, base_dir);
 
-        if (opts->action.interactive)
+        if (opts->action.interactive && !opts->action.dry_run)
         {
             char *prompt = NULL;
             if (asprintf(&prompt, "Rename file '%s' → '%s'? ", old_path, new_suffix) == -1)
             {
                 fprintf(stderr, "Error on asprintf(): %s\n", strerror(errno));
+                counters->error++;
                 free(new_path);
-                free(prompt);
+                if (prompt)
+                {
+                    free(prompt);
+                }
                 return;
             }
             if (!get_answer(prompt))
@@ -357,7 +360,8 @@ static void rename_element(const struct dirent *namelist, RenameOptions *opts, E
         {
             if (opts->action.verbose)
             {
-                printf("[DRY-RUN] Would rename file: '%s' → '%s'\n", old_suffix, new_suffix);
+                printf("[DRY-RUN] Would rename file: '%s' → '%s'\n",
+                       old_suffix, new_suffix);
             }
             counters->rnmd_files++;
         }
@@ -369,7 +373,8 @@ static void rename_element(const struct dirent *namelist, RenameOptions *opts, E
                 if (is_system_file(namelist->d_name))
                 {
                     printf("Renamed file: '%s' → '%s'\n"
-                            "WARNING: This looks like a system or configuration file!\n", old_suffix, new_suffix);
+                            "WARNING: This looks like a system or configuration file!\n",
+                            old_suffix, new_suffix);
                 }
                 if (opts->action.verbose)
                 {
@@ -426,7 +431,7 @@ static char *generate_unique_name(const char *current_path, const char *old_name
 }
 
 // Identifies system's files
-static bool is_system_file (const char *name)
+static bool is_system_file(const char *name)
 {
     const char *ext = get_clean_extension(name);
     if (!ext || ext[0] == '\0')
@@ -435,21 +440,21 @@ static bool is_system_file (const char *name)
     }
 
     const char *dangerous_exts[] = {
-    // Configuração
+    // Config
     ".ini", ".conf", ".cfg", ".config", ".yaml", ".yml", ".json", ".xml",
     
-    // Logs e temporários
+    // Logs and temps
     ".log", ".bak", ".tmp", ".swp", ".old", ".orig",
     
-    // Sistema / Daemon
+    // Sytem / Daemon
     ".pid", ".lock", ".service", ".socket", ".timer", ".mount",
     
-    // Ambiente e scripts
+    // Environment and scripts
     ".env", ".sh", ".bash", ".zsh", ".rc", ".profile",
     
-    // Específicos do Linux / Desktop
+    // Linux / Desktop
     ".desktop", ".htaccess", ".htpasswd", ".gitignore", ".gitattributes",
-    ".editorconfig", ".npmrc", ".yarnrc",
+    ".editorconfig", ".npmrc", ".yarnrc", ".archivist-backup",
     
     NULL
     };
