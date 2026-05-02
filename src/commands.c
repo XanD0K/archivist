@@ -22,7 +22,8 @@
 #include "utils.h"
 
 // Prototypes
-static ErrorCode validate_command(const char *cmd, const CommandEntry *cmd_table, size_t len, size_t *index);
+static ErrorCode validate_command(const char *cmd, const CommandEntry *cmd_table,
+                                  size_t len, size_t *index);
 static bool validate_args(int argc, size_t index, const CommandEntry *cmd_table);
 static bool check_args_count(int argc, size_t index, const CommandEntry *cmd_table);
 
@@ -31,8 +32,8 @@ ErrorCode execute_command(int argc, char **argv)
 {
     if (argc < 2)
     {        
-        fprintf(stderr, "Usage: ./archivist COMMAND [arguments]\n"
-                        "Check available commands with: ./archivist help\n");
+        fprintf(stderr, "Usage: ./archivist COMMAND [ARGUMENTS]\n"
+                        "Check available commands: ./archivist help\n");
         return EC_INVALID_ARGC;
     }
 
@@ -45,7 +46,7 @@ ErrorCode execute_command(int argc, char **argv)
             return EC_INVALID_ARGC;
         }
         handle_help();
-        return EC_HELP_FLAG;
+        return EC_SUCCESS;
     }
 
     // Table with available commands
@@ -64,7 +65,7 @@ ErrorCode execute_command(int argc, char **argv)
         {NULL, NULL, 0, 0}
     };
 
-    // Gets size of array
+    // Gets size of table
     size_t len = sizeof(cmd_table) / sizeof(cmd_table[0]) - 1;
 
     // Checks if command if valid
@@ -73,7 +74,7 @@ ErrorCode execute_command(int argc, char **argv)
     if (ret == EC_INVALID_COMMAND)
     {
         fprintf(stderr, "Invalid command: %s!\n"
-                        "Check available commands with: ./archivist help\n", argv[1]);
+                        "Check available commands: ./archivist help\n", argv[1]);
         return ret;
     }
 
@@ -89,7 +90,8 @@ ErrorCode execute_command(int argc, char **argv)
 }
 
 // Checks if command is valid
-static ErrorCode validate_command(const char *cmd, const CommandEntry *cmd_table, size_t len, size_t *index)
+static ErrorCode validate_command(const char *cmd, const CommandEntry *cmd_table,
+                                  size_t len, size_t *index)
 {
     for (size_t i = 0; i < len; i++)
     {
@@ -99,6 +101,7 @@ static ErrorCode validate_command(const char *cmd, const CommandEntry *cmd_table
             *index = i;
             return EC_SUCCESS;
         }
+        // Early exit
         if (cmp < 0)
         {
             break;
@@ -119,41 +122,32 @@ static bool validate_args(int argc, size_t index, const CommandEntry *cmd_table)
         switch (index)
         {
             case 0:  // Backup
-            case 5:  // Move
-            case 6:  // Recover
+            case 4:  // Move
+            case 5:  // Recover
             {
                 fprintf(stderr, "Usage: ./archivist %s [DIRECTORY] DIRECTORY [FLAGS]\n", cmd);
                 break;
             }
             case 1:  // Delete
-            case 3:  // List
-            case 7:  // Rename
-            case 8:  // Report
-            case 9:  // Search
+            case 2:  // List
+            case 6:  // Rename
+            case 7:  // Report
+            case 8:  // Search
+            case 9:  // Tree
             {
                 fprintf(stderr, "Usage: ./archivist %s [DIRECTORY] [FLAGS]\n", cmd);
                 break;
             }
-            case 2:  // Help
-            {
-                fprintf(stderr, "Usage: ./archivist %s\n", cmd);
-                break;
-            }
-            case 4:  // Log
+            case 3:  // Log
             {
                 fprintf(stderr, "Usage: ./archivist %s [FLAGS]\n", cmd);
-                break;
-            }
-            case 10:  // Tree
-            {
-                fprintf(stderr, "Usage: ./archivist %s [DIRECTORY]\n", cmd);
                 break;
             }
             // Fallback
             default:
             {
                 fprintf(stderr, "Invalid command: %s!\n"
-                        "Check all commands available with: ./archivist help\n", cmd);
+                        "Check all commands available: ./archivist help\n", cmd);
             }
         }
 
@@ -234,7 +228,7 @@ CommandContext *setup_command(int argc, char **argv, int min_args, PrintHelp pri
         return context;
     }
 
-    // Validates destination directory
+    // Validates/Creates destination directory
     if (min_args == 3)
     {
         context->dst_dir = get_valid_destination(dst_path);
@@ -256,16 +250,18 @@ CommandContext *setup_command(int argc, char **argv, int min_args, PrintHelp pri
     ErrorCode parse_err = parser(argc, argv, context->opt_start, context->opts);
     if (parse_err != EC_SUCCESS)
     {
-        fprintf(stderr, "Invalid CLI arguments!\n");
         context->error_code = parse_err;
         return context;
     }
+
+    // Default filter used in scandir()
+    context->filter = scandir_visible_only;
 
     context->error_code = EC_SUCCESS;
     return context;
 }
 
-// Free command setup's structure
+// Frees command setup's structure
 void free_command_context(CommandContext *context)
 {
     if (!context)

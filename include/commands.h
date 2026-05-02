@@ -2,6 +2,7 @@
 #define COMMANDS_H
 
 // Libraries
+#include <dirent.h>
 #include <stdbool.h>
 #include <stddef.h>  // size_t
 
@@ -9,9 +10,10 @@
 #include "error_code.h"
 
 // Type/Alias
-typedef ErrorCode (*CommandHandler)(int argc, char **argv, int min_args);
-typedef void (*PrintHelp)(void);
-typedef ErrorCode (*ParseOptions)(int argc, char **argv, int opt_start, void *opts_out);
+typedef ErrorCode (*CommandHandler)(int argc, char **argv, int min_args);  // Feature's settup function
+typedef void (*PrintHelp)(void);  // Festure's help function
+typedef ErrorCode (*ParseOptions)(int argc, char **argv, int opt_start, void *opts_out);  // Feature's parser
+typedef int (*ScandirFilter)(const struct dirent *);  // Filter used on scandir()
 
 // Structure for each command in the table
 typedef struct
@@ -24,11 +26,12 @@ typedef struct
 
 // Structure to handle setup of each command
 typedef struct {
-    ErrorCode error_code;
     char *base_dir;
     char *dst_dir;
     int opt_start;
     void *opts;
+    ScandirFilter filter;
+    ErrorCode error_code;
 } CommandContext;
 
 // Prototypes
