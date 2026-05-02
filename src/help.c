@@ -226,7 +226,7 @@ void print_log_help(void)
         "\n"
         "Flags:\n"
         "   -l | --limit\n"
-        "       defines the number of ouput rows\n"
+        "       defines the number of output rows\n"
         "   -C | --command\n"
         "       filter the output by the specified command\n"
         "   -E | --erase\n"
@@ -275,7 +275,7 @@ void print_move_help(void)
         "       Asks for confirmation before moving file or creating directory\n"
         "       defaults: off\n"
         "   -s | --skip\n"
-        "       if file/subdirectory alredy exists, it won't be moved\n"
+        "       if file/subdirectory already exists, it won't be moved\n"
         "       default: off\n"
         "   -t | --type\n"
         "       moves only specific type (file | dir | slink)\n"
@@ -488,7 +488,7 @@ void print_search_help(void)
         "./archivist search /folder -t file --all\n"
         "./archivist search /folder -A -R --min-size 50K --max-size 50G\n"
         "\n"
-        "All comands: ./archivist help"
+        "All commands: ./archivist help"
     );
 }
 
