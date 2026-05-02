@@ -4,6 +4,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>  // O_RDONLY | O_WRONLY | O_CREAT | O_TRUNC
+#include <limits.h>  // PATH_MAX
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -12,7 +13,6 @@
 #include <unistd.h>  // open() | close() | read()
 
 // Headers
-#include "cli_opts.h"
 #include "utils.h"
 
 // Globals (CRC32)
@@ -21,6 +21,21 @@ static bool table_initialized = false;
 
 // Prototypes
 static void init_crc32_table(void);
+
+// Checks for 'help' flag
+bool check_help(int argc, const char *argv)
+{
+    if (argc == 3)
+    {
+        if (strcasecmp(argv, "--help") == 0 ||
+            strcasecmp(argv, "help") == 0)
+            {
+                return true;
+            }
+    }
+
+    return false;
+}
 
 // Checks for valid directory, setting (.) as default, and removing trailing "/"
 char *get_valid_directory(const char *path)
@@ -34,10 +49,10 @@ char *get_valid_directory(const char *path)
     }
 
     struct stat st;
-    // Tries to fill st with directory's data
+    // Gets element's data
     if (lstat(base_dir, &st) != 0)
     {
-        fprintf(stderr, "Error in stat(): %s\n", strerror(errno));
+        fprintf(stderr, "Error in lstat(): %s\n", strerror(errno));
         free(base_dir);
         return NULL;
     }
@@ -46,7 +61,7 @@ char *get_valid_directory(const char *path)
     if (!S_ISDIR(st.st_mode))
     {
         errno = ENOTDIR;
-        fprintf(stderr, "Error accessing diretory %s: %s\n", p, strerror(errno));
+        fprintf(stderr, "Error accessing directory %s: %s\n", base_dir, strerror(errno));
         free(base_dir);
         return NULL;
     }
@@ -68,7 +83,7 @@ char *get_valid_destination(const char *path)
     if (!path || path[0] == '\0')
     {
         errno = ENOTDIR;
-        fprintf(stderr, "Error accessing diretory %s: %s\n", path, strerror(errno));
+        fprintf(stderr, "Error accessing directory: %s\n", strerror(errno));
         return NULL;
     }
 
@@ -98,7 +113,7 @@ char *get_valid_destination(const char *path)
         if (check_path_name_size(new_path, sizeof(new_path), current_path, token) == -1)
         {
             free(cpy_path);
-            fprintf(stderr, "Path too long: %s\n", strerror(errno));
+            fprintf(stderr, "Path too long: %s/%s\n", current_path, token);
             return NULL;
         }
 
@@ -117,7 +132,7 @@ char *get_valid_destination(const char *path)
         if (check_path_name_size(current_path, sizeof(current_path), new_path, NULL) == -1)
         {
             free(cpy_path);
-            fprintf(stderr, "Path too long: %s\n", strerror(errno));
+            fprintf(stderr, "Path too long: %s\n", new_path);
             return NULL;
         }
         token = strtok(NULL, "/");
@@ -139,7 +154,7 @@ int scandir_visible_only(const struct dirent *entry)
     return (entry->d_name[0] != '.');
 }
 
-
+// Filters hidden directories, but displayes hidden files
 int scandir_show_hidden_files(const struct dirent *entry)
 {
     if (entry->d_name[0] == '.')
@@ -170,7 +185,7 @@ char *formatted_output(off_t total_size)
         index++;
     }
 
-    // Limits index to 5
+    // Limits index to 5 (PB)
     index = (index < 5) ? index : 5;
 
     char *str;
@@ -262,21 +277,6 @@ void free_extensions(Extension *ext, size_t ext_counter)
     free(ext);
 }
 
-// Checks for 'help' flag
-bool check_help(int argc, const char *argv)
-{
-    if (argc == 3)
-    {
-        if (strcasecmp(argv, "--help") == 0 ||
-            strcasecmp(argv, "help") == 0)
-            {
-                return true;
-            }
-    }
-
-    return false;
-}
-
 // Gets directory's suffix
 const char *get_suffix(const char *path, const char *base_dir)
 {
@@ -289,7 +289,7 @@ const char *get_suffix(const char *path, const char *base_dir)
     return suffix;
 }
 
-// Gets user's input
+// Gets user's input (-i|--interactive)
 bool get_answer(const char *prompt)
 {
     while (1)
@@ -342,7 +342,99 @@ int check_path_name_size(char *dst, size_t len, const char *prefix, const char *
     return 0;
 }
 
-// Compares source and destiny files
+// Checks if given value is in a list of values
+bool check_value_in_list(const char *name, const char **list, size_t len)
+{
+    bool found = false;
+    for (size_t i = 0; i < len; i++)
+    {
+        // Invalid sort method defaults to "name"
+        if(strcasecmp(name, list[i]) == 0)
+        {
+            found = true;
+            break;
+        }
+    }
+
+    return found;
+}
+
+// Gets current time ('log' feature)
+void get_formatted_time(char *buffer, size_t buffer_len)
+{
+    time_t now = time(NULL);  // Current time in seconds (since 1970)
+    struct tm *tm_info = localtime(&now);  // Converts to local format
+    strftime(buffer, buffer_len, "%F %T", tm_info);
+}
+
+// Entirely frees a dirent struct
+void free_dirent(struct dirent **tmp,int len)
+{
+    for (int i = 0; i < len; i++)
+    {
+        free(tmp[i]);
+    }
+
+    free(tmp);
+}
+
+// Validates 'type' flag (-t|--type)
+char *validate_type(const char *type)
+{
+    if (!type || type[0] == '\0')
+    {
+        return NULL;
+    }
+
+    if (is_directory_type(type) ||
+        is_slink_type(type) ||
+        is_file_type(type))
+    {
+        return (char *)type;
+    }
+
+    return NULL;
+}
+
+// Checks if 'type' is a directory
+bool is_directory_type (const char *type)
+{
+    if (!type || type[0] == '\0')
+    {
+        return false;
+    }
+
+    return (strcasecmp(type, "d") == 0 ||
+            strcasecmp(type, "dir") == 0 ||
+            strcasecmp(type, "directory") == 0);
+}
+
+// Checks if 'type' is a simbolic link
+bool is_slink_type (const char *type)
+{
+    if (!type || type[0] == '\0')
+    {
+        return false;
+    }
+
+    return (strcasecmp(type, "sl") == 0 ||
+            strcasecmp(type, "slink") == 0 ||
+            strcasecmp(type, "symbolic-link") == 0);
+}
+
+// Checks if 'type' is a regular file
+bool is_file_type (const char *type)
+{
+    if (!type || type[0] == '\0')
+    {
+        return false;
+    }
+
+    return (strcasecmp(type, "f") == 0 ||
+            strcasecmp(type, "file") == 0);
+}
+
+// Compares source and destiny files ('backup' and 'recover' features)
 bool file_needs_backup(struct stat *st_src, const char *src_dir, const char *dst_dir)
 {
     // File doesn't exist on destiny directory
@@ -418,95 +510,6 @@ int copy_file(const char *src_path, const char *dst_path)
     return (ret == 0) ? 0 : -1;
 }
 
-// Checks if given value is in a list of values
-bool check_value_in_list(const char *name, const char *list[], size_t len)
-{
-    bool found = false;
-    for (size_t i = 0; i < len; i++)
-    {
-        // Invalid sort method defaults to "name"
-        if(strcasecmp(name, list[i]) == 0)
-        {
-            found = true;
-            break;
-        }
-    }
-
-    return found;
-}
-
-// Gets current time
-void get_formatted_time(char *buffer, size_t buffer_len)
-{
-    time_t now = time(NULL);  // Current time in seconds (since 1970)
-    struct tm *tm_info = localtime(&now);  // Converts to local format
-    strftime(buffer, buffer_len, "%F %T", tm_info);
-}
-
-// Entirely frees a dirent struct
-void free_dirent(struct dirent **tmp,int len)
-{
-    for (int i = 0; i < len; i++)
-    {
-        free(tmp[i]);
-    }
-
-    free(tmp);
-}
-
-// Validates 'type' flag
-char *validate_type(const char *type)
-{
-    if (!type || type[0] == '\0')
-    {
-        return NULL;
-    }
-
-    if (is_directory_type(type) ||
-        is_slink_type(type) ||
-        is_file_type(type))
-    {
-        return (char *)type;
-    }
-
-    return NULL;
-}
-
-bool is_directory_type (const char *type)
-{
-    if (!type || type[0] == '\0')
-    {
-        return false;
-    }
-
-    return (strcasecmp(type, "d") == 0 ||
-            strcasecmp(type, "dir") == 0 ||
-            strcasecmp(type, "directory") == 0);
-}
-
-bool is_slink_type (const char *type)
-{
-    if (!type || type[0] == '\0')
-    {
-        return false;
-    }
-
-    return (strcasecmp(type, "sl") == 0 ||
-            strcasecmp(type, "slink") == 0 ||
-            strcasecmp(type, "symbolic-link") == 0);
-}
-
-bool is_file_type (const char *type)
-{
-    if (!type || type[0] == '\0')
-    {
-        return false;
-    }
-
-    return (strcasecmp(type, "f") == 0 ||
-            strcasecmp(type, "file") == 0);
-}
-
 // Populates the crc32_table with every possible value for 8 bits
 static void init_crc32_table(void)
 {
@@ -571,4 +574,38 @@ uint32_t quick_file_hash(const char *path)
 
     // Returns CRC32 of the data
     return crc32(buffer, (size_t)bytes);
+}
+
+// Prints divider for better output message
+void print_divider(void)
+{
+    printf("---------------------------------------------------------------------\n");
+}
+
+// Prints error message
+void print_counter_err_msg(size_t counter)
+{
+    if (counter != 0)
+    {
+        print_divider();
+        printf("(Finished with %zu errors)\n", counter);
+    }
+}
+
+// Prints output message ('backup', 'recover' and 'rename' features)
+void print_output_message(const char *action, ActionOptions opts, size_t files)
+{
+    if (opts.verbose)
+    {
+        print_divider();
+    }
+
+    if (opts.dry_run)
+    {
+        printf("[DRY-RUN] %s files: %zu\n", action, files);
+    }
+    else
+    {
+        printf("%s files: %zu\n", action, files);
+    }
 }
