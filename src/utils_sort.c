@@ -120,13 +120,13 @@ int cmp_version_scandir(const struct dirent **a, const struct dirent **b)
         return outter_result;
     }
 
-    // Points to the beggining of each word
+    // Points to the beginning of each word
     const char *pA = (*a)->d_name;
     const char *pB = (*b)->d_name;
 
     while (*pA || *pB)
     {
-        // Jumps the identical part of earch word
+        // Jumps the identical part of each word
         while (*pA && *pB)
         {
             if (isdigit(*pA) != 0 || isdigit(*pB) != 0)
@@ -232,7 +232,9 @@ int cmp_date_scandir(const struct dirent **a, const struct dirent **b)
     if (stat(pathA, &sa) != 0 || stat(pathB, &sb) != 0)
     {
         // Fallback to name if fails
-        return (!cmp_opts.ignore_case) ? (strcmp((*a)->d_name, (*b)->d_name)) :(strcasecmp((*a)->d_name, (*b)->d_name));
+        return (!cmp_opts.ignore_case)
+            ? (strcmp((*a)->d_name, (*b)->d_name)) 
+            : (strcasecmp((*a)->d_name, (*b)->d_name));
     }
     
     int result = (sa.st_mtime > sb.st_mtime) - (sa.st_mtime < sb.st_mtime);
@@ -262,7 +264,9 @@ int cmp_size_scandir(const struct dirent **a, const struct dirent **b)
     if (stat(pathA, &sa) != 0 || stat(pathB, &sb) != 0)
     {
         // Fallback to name if fails
-        return (strcasecmp((*a)->d_name, (*b)->d_name));
+        return (!cmp_opts.ignore_case) 
+            ? (strcmp((*a)->d_name, (*b)->d_name)) 
+            : (strcasecmp((*a)->d_name, (*b)->d_name));
     }
 
     int result = (sa.st_size > sb.st_size) - (sa.st_size < sb.st_size);
