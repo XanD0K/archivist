@@ -25,7 +25,8 @@
 static void report_element(const struct dirent *namelist, ReportOptions *opts,
                            Extension **ext, const char *current_path,
                            ReportCounters *counters, ScandirFilter filter);
-static ssize_t find_extension_in_list(const char *extension, Extension *ext, size_t ext_counter);
+static ssize_t find_extension_in_list(const char *extension, Extension *ext,
+                                      size_t ext_counter);
 static void reallocates_list(Extension **ext, size_t *capacity);
 static void updates_list(Extension *ext, const char *extension_name, size_t index,
                          off_t file_size, ReportCounters *counters);
@@ -44,7 +45,7 @@ ErrorCode handle_report(int argc, char **argv, int min_args)
     if (context->error_code != EC_SUCCESS)
     {
         free_command_context(context);
-        return (context->error_code == EC_HELP_FLAG || context->error_code == EC_CMD_HELP_FLAG)
+        return (context->error_code == EC_CMD_HELP_FLAG)
             ? EC_SUCCESS
             : context->error_code;
     }
@@ -64,16 +65,15 @@ ErrorCode handle_report(int argc, char **argv, int min_args)
         free_command_context(context);
         return EC_MEMORY_ALLOCATION;
     }
-    
-    // Determines the filter used in scandir()
-    ScandirFilter filter = scandir_visible_only;
+
+    // Changes default filter used in scandir()
     if (opts->base.all)
     {
-        filter = scandir_no_dot_filter;
+        context->filter = scandir_no_dot_filter;
     }
     else if (opts->base.almost_all)
     {
-        filter = scandir_show_hidden_files;
+        context->filter = scandir_show_hidden_files;
     }
 
     // Default return value
@@ -84,7 +84,7 @@ ErrorCode handle_report(int argc, char **argv, int min_args)
 
     // Retrieves directory's content
     struct dirent **namelist = NULL;
-    int n = scandir(context->base_dir, &namelist, filter, alphasort);
+    int n = scandir(context->base_dir, &namelist, context->filter, alphasort);
     if (n == -1)
     {
         fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
@@ -94,7 +94,8 @@ ErrorCode handle_report(int argc, char **argv, int min_args)
 
     for (int i = 0; i < n; i++)
     {
-        report_element(namelist[i], opts, &ext, context->base_dir, &counters, filter);
+        report_element(namelist[i], opts, &ext, context->base_dir,
+                       &counters, context->filter);
         // Prevents code from continue running with a corrupted Dynamic Array
         if (!ext)
         {
@@ -155,11 +156,9 @@ ErrorCode handle_report(int argc, char **argv, int min_args)
 
     // Prints output message
     print_report_output(to_print, print_count, opts->base.human_readable, counters);
-    if (counters.error != 0)
-    {
-        printf("(Finished with %zu errors)\n", counters.error);
-    }
+    print_counter_err_msg(counters.error);
 
+// Cleans allocated memory
 cleanup:
     if (namelist)
     {
@@ -230,7 +229,8 @@ ErrorCode parse_report_opts(int argc, char **argv, int opt_start, void *opts_out
             // ========== FILTER ==========
             case 'e':  // extension
             {
-                handle_filter_flag(opt, long_opts[long_index].name, optarg, &opts->filter, filter_flags);
+                handle_filter_flag(opt, long_opts[long_index].name, optarg,
+                                   &opts->filter, filter_flags);
                 break;
             }
             // ========== ERROR ===========
@@ -242,6 +242,19 @@ ErrorCode parse_report_opts(int argc, char **argv, int opt_start, void *opts_out
         }
     }
 
+    // Checks for invalid argument
+    if (optind < argc)
+    {
+        fprintf(stderr, "Invalid argument(s):");
+        while (optind < argc)
+        {
+            fprintf(stderr, " %s", argv[optind++]);
+        }
+        fprintf(stderr, "\n");
+        return EC_PARSE_ERROR;
+    }
+
+    // Defines filter
     if (opts->base.almost_all)
     {
         opts->base.all = false;
@@ -260,14 +273,17 @@ static void report_element(const struct dirent *namelist, ReportOptions *opts,
     if (check_path_name_size(full_path, sizeof(full_path), current_path, namelist->d_name) == -1)
     {
         fprintf(stderr, "Path too long: %s/%s\n", current_path, namelist->d_name);
+        counters->error++;
         return;
     }
+
+    struct stat st;
+    bool has_data = false;
 
     // Checks for directory type
     bool is_dir = (namelist->d_type == DT_DIR);
     if (namelist->d_type == DT_UNKNOWN)
     {
-        struct stat st;
         if (lstat(full_path, &st) != 0)
         {
             fprintf(stderr, "Couldn't access %s: %s\n", full_path, strerror(errno));
@@ -276,9 +292,10 @@ static void report_element(const struct dirent *namelist, ReportOptions *opts,
         }
 
         is_dir = S_ISDIR(st.st_mode);
+        has_data = true;
     }
 
-    // ==================== Directories ====================
+    // ==================== DIRECTORIES ====================
     if (is_dir)
     {
         // Recursively traverses subdirectories
@@ -315,12 +332,14 @@ static void report_element(const struct dirent *namelist, ReportOptions *opts,
     ssize_t index = find_extension_in_list(extension_name, *ext, counters->ext);
 
     // Gets element's data
-    struct stat st;
-    if (lstat(full_path, &st) != 0)
+    if (!has_data)
     {
-        fprintf(stderr, "Couldn't access %s: %s\n", full_path, strerror(errno));
-        counters->error++;
-        return;
+        if (lstat(full_path, &st) != 0)
+        {
+            fprintf(stderr, "Couldn't access %s: %s\n", full_path, strerror(errno));
+            counters->error++;
+            return;
+        }
     }
 
     // Current extension doesn't exist in list
@@ -343,15 +362,17 @@ static void report_element(const struct dirent *namelist, ReportOptions *opts,
         // Increments extension's counter
         counters->ext++;
     }
-    // Extension already exists in list (updates values)
+    // Extension already exists in list
     else
     {
+        // Updates value in list for current extension
         updates_list(*ext, extension_name, (size_t)index, st.st_size, counters);
     }
 }
 
 // Searches for extension in extension list
-static ssize_t find_extension_in_list(const char *extension, Extension *ext, size_t ext_counter)
+static ssize_t find_extension_in_list(const char *extension, Extension *ext,
+                                      size_t ext_counter)
 {
     for (ssize_t i = 0; i < (ssize_t)ext_counter; i++)
     {
@@ -406,10 +427,15 @@ static void updates_list(Extension *ext, const char *extension_name, size_t inde
 }
 
 // Prints output message with percentage for each extension
-static void print_report_output(Extension *ext, size_t ext_counter, bool human_readable, ReportCounters counters)
+static void print_report_output(Extension *ext, size_t ext_counter,
+                                bool human_readable, ReportCounters counters)
 {
-    size_t quantity_total = 0;
-    off_t size_total = 0;
+    // ==================== HEADER ====================
+    print_divider();
+    printf("%-11s|%10s%s%10s|%10s%s\n", "Extension", "","Files", "","","Size");
+    print_divider();
+
+    // ===================== BODY =====================
     const float percentage = 100.0f;
     for (size_t i = 0; i < ext_counter; i++)
     {
@@ -419,8 +445,7 @@ static void print_report_output(Extension *ext, size_t ext_counter, bool human_r
         float size_percentage = (counters.total_size > 0)
             ? (float)ext[i].size / (float)counters.total_size * percentage
             : 0.0f;
-        quantity_total += ext[i].file_count;
-        size_total += ext[i].size;
+
         if (human_readable)
         {
             char *str = formatted_output(ext[i].size);
@@ -437,15 +462,18 @@ static void print_report_output(Extension *ext, size_t ext_counter, bool human_r
         }
     }
 
-    printf("---------------------------------------------------------------------\n");
+    // ==================== TOTAL =====================
+    print_divider();
     if (human_readable)
     {
-        printf("Total      |  %5zu files (100.00%%)  |  %12ld bytes (100.00%%)\n",
-               quantity_total, size_total);
+        char *f_total = formatted_output(counters.total_size);
+        printf("Total      |  %5zu files (100.00%%)  |  %12s (100.00%%)\n",
+               counters.total_files, f_total);
+        free(f_total);
     }
     else
     {
         printf("Total      |  %5zu files (100.00%%)  |  %12jd bytes (100.00%%)\n",
-               quantity_total, (__intmax_t)size_total);
+               counters.total_files, (__intmax_t)counters.total_size);
     }
 }
