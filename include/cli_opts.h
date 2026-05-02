@@ -11,7 +11,6 @@ typedef struct
     bool all;
     bool almost_all;
     bool human_readable;
-    bool ignore_case;
     bool recursive;
     char *sort;
 } CommonOptions;
