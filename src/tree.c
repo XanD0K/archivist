@@ -2,16 +2,15 @@
 #define _FILE_OFFSET_BITS 64  // Forces off_t to be 64 bits
 
 // Libraries
-#include <dirent.h>
 #include <errno.h>
 #include <limits.h>
-#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 
-// Header
+// Headers
+#include "commands.h"
 #include "error_code.h"
 #include "help.h"
 #include "utils.h"
@@ -22,7 +21,7 @@ static void print_tree(struct dirent **namelist, const char *base_dir,
 static void print_branch(const struct dirent *namelist, const char *current_path,
                          const char *base_dir, const char *prefix, bool is_last,
                          ScandirFilter filter);
-static char *concatenates_prefix(const char *prefix, const char *sufix);
+static char *concatenates_prefix(const char *prefix, const char *suffix);
 
 // Setup logic for 'tree' feature
 ErrorCode handle_tree(int argc, char **argv, int min_args)
@@ -146,14 +145,15 @@ static void print_branch(const struct dirent *namelist, const char *current_path
             char *new_prefix = concatenates_prefix(prefix, continuation);
             if (new_prefix)
             {
-                print_branch(entry[i], new_path, base_dir, new_prefix, child_is_last, filter);
+                print_branch(entry[i], new_path, base_dir, new_prefix,
+                             child_is_last, filter);
                 free(new_prefix);
-
             }
             else
             {
                 // Fallbacks to previous prefix
-                print_branch(entry[i], new_path, base_dir, prefix, child_is_last, filter);
+                print_branch(entry[i], new_path, base_dir, prefix,
+                             child_is_last, filter);
             }
 
             free(entry[i]);
@@ -164,11 +164,11 @@ static void print_branch(const struct dirent *namelist, const char *current_path
 }
 
 // Concatenates prefix and suffix
-static char *concatenates_prefix(const char *prefix, const char *sufix)
+static char *concatenates_prefix(const char *prefix, const char *suffix)
 {
     size_t prefix_len = strlen(prefix);
-    size_t sufix_len = strlen(sufix);
-    size_t total_size = prefix_len + sufix_len;
+    size_t suffix_len = strlen(suffix);
+    size_t total_size = prefix_len + suffix_len;
 
     char *new_prefix = calloc(total_size + 1, sizeof(char));
     if (!new_prefix)
@@ -177,7 +177,7 @@ static char *concatenates_prefix(const char *prefix, const char *sufix)
     }
 
     memcpy(new_prefix, prefix, prefix_len);
-    memcpy(new_prefix + prefix_len, sufix, sufix_len + 1);
+    memcpy(new_prefix + prefix_len, suffix, suffix_len + 1);
 
     return new_prefix;
 }
