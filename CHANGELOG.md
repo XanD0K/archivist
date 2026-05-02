@@ -1,6 +1,19 @@
 # Changelog
 
-## [1.0.0] - 2026-05-01
+## [1.0.1] - 2026-05-01
+### Added
+- Created `print_divider()` and `print_counter_err_msg()` to improve output message and clean code
+- Created `print_output_message()` to improve output message and clean code (used on `backup`, `recover` and `rename` features)
+
+### Changed
+- Moved `filter` variable from `utils.c` to be a field on `CommandContext` structure
+- Improving `list` and `search` features by adding `\` on found directories
+
+### Fixed
+- Fixed typos and minor bugs throughout all files
+
+
+## [1.0.0] - 2026-04-30
 ### Added
 - Added `uint32_t supported` field on `FilterOptions` structure
 - Created `check_directory_flags()` and `check_file_flags()` to centralize all checkers

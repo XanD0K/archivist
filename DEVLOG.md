@@ -1,10 +1,19 @@
 # Development Log
 
-
 ## [2026-05-01]
 **Plans**
+- Last checks before submitting
+- Checks for typos, bugs and possible improvements
+
+**Progress**
+-  `filter` variable is now a field on `CommandContext` structure, with its core logic defined in `settup_command()`
+- Improved UX by adding `\` at the end of found directories on `list` and `search` features
+- Fixed typos and minor bugs. All features properly working
+
+
+## [2026-04-30]
+**Plans**
 - Test all features
-- Make last improvements before submitting
 
 **Challenges**
 - Fix parser to prevent

@@ -1,14 +1,9 @@
 # TODO
 
-
 ## New features
 
 
 ## Refactoring tasks
-- [-] Improve error codes (`error_code.h`) to embrace every possible error
-- [ ] `list` and `search` features → improve output by adding a `/` on diretctories
-- [ ] Fix output message do display correct number of files for each directory
-- [ ] Moves `filter` variable to be a `CommandContext` field
 
 
 ## Testing
@@ -70,3 +65,6 @@
 - [x] Apply `get_suffix()` on other features
 - [x] `log` feature → add flag to clean .log file (`-E|--erase`)
 - [x] Test all features
+- [x] Moves `filter` variable to be a `CommandContext` field
+- [x] `list` and `search` features → improve output by adding a `/` on diretctories
+- [x] Improve error codes (`error_code.h`) to embrace every possible error
