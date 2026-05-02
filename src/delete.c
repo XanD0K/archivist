@@ -45,7 +45,7 @@ ErrorCode handle_delete(int argc, char **argv, int min_args)
     if (context->error_code != EC_SUCCESS)
     {
         free_command_context(context);
-        return (context->error_code == EC_HELP_FLAG || context->error_code == EC_CMD_HELP_FLAG)
+        return (context->error_code == EC_CMD_HELP_FLAG)
             ? EC_SUCCESS
             : context->error_code;
     }
@@ -70,20 +70,19 @@ ErrorCode handle_delete(int argc, char **argv, int min_args)
     // Default return value
     ErrorCode ret = EC_SUCCESS;
 
-    // Determines the filter used in scandir()
-    ScandirFilter filter = scandir_visible_only;
+    // Changes default filter used in scandir()
     if (opts->base.all)
     {
-        filter = scandir_no_dot_filter;
+        context->filter = scandir_no_dot_filter;
     }
     else if (opts->base.almost_all)
     {
-        filter = scandir_show_hidden_files;
+        context->filter = scandir_show_hidden_files;
     }
 
     // Retrieves directory's content
     struct dirent **namelist = NULL;
-    int n = scandir(context->base_dir, &namelist, filter, alphasort);
+    int n = scandir(context->base_dir, &namelist, context->filter, alphasort);
     if (n == -1)
     {
         fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
@@ -95,7 +94,7 @@ ErrorCode handle_delete(int argc, char **argv, int min_args)
     for (int i = 0; i < n; i++)
     {
         delete_element(namelist[i], opts, ext, context->base_dir,
-                       context->base_dir, &counters, filter, false);
+                       context->base_dir, &counters, context->filter, false);
     }
     free_dirent(namelist, n);
 
@@ -126,10 +125,7 @@ ErrorCode handle_delete(int argc, char **argv, int min_args)
 
     free(f_out);
 
-    if (counters.error != 0)
-    {
-        printf("(Finished with %zu errors)\n", counters.error);
-    }
+    print_counter_err_msg(counters.error);
 
 cleanup:
     if (ext)
@@ -207,7 +203,8 @@ ErrorCode parse_delete_opts(int argc, char **argv, int opt_start, void *opts_out
             case 't':  // type
             case 0:    // max-size | min-size 
             {
-                handle_filter_flag(opt, long_opts[long_index].name, optarg, &opts->filter, filter_flags);
+                handle_filter_flag(opt, long_opts[long_index].name, optarg,
+                                   &opts->filter, filter_flags);
                 break;
             }
             // ========== ACTION ==========
@@ -274,11 +271,12 @@ static void delete_element(const struct dirent *namelist, DeleteOptions *opts,
     if (check_path_name_size(full_path, sizeof(full_path), current_path, namelist->d_name) == -1)
     {
         fprintf(stderr, "Path too long: %s/%s\n", current_path, namelist->d_name);
+        counters->error++;
         return;
     }
 
     struct stat st;
-    bool has_stat = false;
+    bool has_data = false;
 
     // Checks for directory type
     bool is_dir = (namelist->d_type == DT_DIR);
@@ -292,24 +290,29 @@ static void delete_element(const struct dirent *namelist, DeleteOptions *opts,
         }
 
         is_dir = S_ISDIR(st.st_mode);
-        has_stat = true;
+        has_data = true;
     }
 
-    // Gets source's and destination's suffix (cleaner output)
+    // Gets source's suffix (cleaner output)
     const char *src_suffix = get_suffix(full_path, base_dir);
 
     // ==================== DIRECTORIES ====================
     if (is_dir)
     {
+        // Checks directory's validity
         if (check_directory_flags(namelist, full_path, &opts->filter, filter))
         {
-            if (!nuke_del && opts->action.interactive)
+            if (!nuke_del && opts->action.interactive && !opts->action.dry_run)
             {
                 char *prompt = NULL;
                 if (asprintf(&prompt, "Fully remove directory '%s'?", src_suffix) == -1)
                 {
                     fprintf(stderr, "Error on asprintf(): %s\n", strerror(errno));
-                    free(prompt);
+                    counters->error++;
+                    if (prompt)
+                    {
+                        free(prompt);
+                    }
                     return;
                 }
                 if (!get_answer(prompt))
@@ -390,18 +393,24 @@ static void delete_element(const struct dirent *namelist, DeleteOptions *opts,
     // ================== FILES & SLINKS ===================
     if (!nuke_del)
     {
-        if (!check_file_flags(namelist, ext, full_path, &opts->filter, counters->ext, &counters->error))
+        // Checks file's validity
+        if (!check_file_flags(namelist, ext, full_path, &opts->filter,
+                              counters->ext, &counters->error))
         {
             return;
         }
         
-        if (opts->action.interactive)
+        if (opts->action.interactive && !opts->action.dry_run)
         {
             char *prompt = NULL;
             if (asprintf(&prompt, "Delete file: '%s'?", src_suffix) == -1)
             {
                 fprintf(stderr, "Error on asprintf(): %s\n", strerror(errno));
-                free(prompt);
+                counters->error++;
+                if (prompt)
+                {
+                    free(prompt);
+                }
                 return;
             }
             if (!get_answer(prompt))
@@ -414,7 +423,7 @@ static void delete_element(const struct dirent *namelist, DeleteOptions *opts,
         }
     }
 
-    if (!has_stat)
+    if (!has_data)
     {
         if (lstat(full_path, &st) != 0)
         {
@@ -464,6 +473,7 @@ static bool delete_directory(DeleteOptions *opts, const char *path,
     if (n == -1)
     {
         fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
+        counters->error++;
         return false;
     }
 
@@ -473,6 +483,7 @@ static bool delete_directory(DeleteOptions *opts, const char *path,
         if (check_path_name_size(new_path, sizeof(new_path), path, ptr[i]->d_name) == -1)
         {
             fprintf(stderr, "Path too long: %s/%s\n", new_path, ptr[i]->d_name);
+            counters->error++;
             continue;
         }
     
@@ -509,7 +520,6 @@ static bool delete_directory(DeleteOptions *opts, const char *path,
                     counters->dlt_size += st.st_size;
                     log_write(LOG_SUCCESS, CMD_DELETE, new_path);
                 }
-                
                 else
                 {
                     counters->error++;
