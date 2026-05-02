@@ -40,7 +40,7 @@ ErrorCode handle_recover(int argc, char **argv, int min_args)
     if (context->error_code != EC_SUCCESS)
     {
         free_command_context(context);
-        return (context->error_code == EC_HELP_FLAG || context->error_code == EC_CMD_HELP_FLAG)
+        return (context->error_code == EC_CMD_HELP_FLAG)
             ? EC_SUCCESS
             : context->error_code;
     }
@@ -76,19 +76,8 @@ ErrorCode handle_recover(int argc, char **argv, int min_args)
     free_command_context(context);
 
     // Prints output message
-    if (opts->action.dry_run)
-    {
-        printf("[DRY-RUN] Recovered files: %zu\n", counters.rcv_files);
-    }
-    else
-    {
-        printf("Recovered files: %zu\n", counters.rcv_files);
-    }
-
-    if (counters.error != 0)
-    {
-        printf("(Finished with %zu errors)\n", counters.error);
-    }
+    print_output_message("Recovered", opts->action, counters.rcv_files);
+    print_counter_err_msg(counters.error);
 
     return EC_SUCCESS;
 }
@@ -183,17 +172,21 @@ static void recover_element(const struct dirent *namelist, const char *base_dir,
         return;
     }
 
+    // Creates full path to current element (origin)
     char src_path[PATH_MAX];
     if (check_path_name_size(src_path, sizeof(src_path), current_path, namelist->d_name) == -1)
     {
         fprintf(stderr, "Path too long: %s/%s\n", current_path, namelist->d_name);
+        counters->error++;
         return;
     }
 
+    // Creates path to new directory (destination)
     char new_dst_path[PATH_MAX];
     if (check_path_name_size(new_dst_path, sizeof(new_dst_path), dst_path, namelist->d_name) == -1)
     {
         fprintf(stderr, "Path too long: %s/%s\n", dst_path, namelist->d_name);
+        counters->error++;
         return;
     }
 
@@ -206,6 +199,7 @@ static void recover_element(const struct dirent *namelist, const char *base_dir,
         if (lstat(src_path, &st) != 0)
         {
             fprintf(stderr, "Couldn't access %s: %s\n", src_path, strerror(errno));
+            counters->error++;
             return;
         }
 
@@ -224,6 +218,7 @@ static void recover_element(const struct dirent *namelist, const char *base_dir,
             if (lstat(src_path, &st) != 0)
             {
                 fprintf(stderr, "Couldn't access '%s': %s\n", src_path, strerror(errno));
+                counters->error++;
                 return;
             }
         }
@@ -239,6 +234,8 @@ static void recover_element(const struct dirent *namelist, const char *base_dir,
         int n = scandir(src_path, &entry, scandir_no_dot_filter, alphasort);
         if (n == -1)
         {
+            fprintf(stderr, "Error on scandir(): %s\n", strerror(errno));
+            counters->error++;
             return;
         }
         for (int i = 0; i < n; i++)
@@ -257,7 +254,11 @@ static void recover_element(const struct dirent *namelist, const char *base_dir,
         if ((asprintf(&prompt, "Recover file '%s'?", src_suffix)) == -1)
         {
             fprintf(stderr, "Error on asprintf(): %s\n", strerror(errno));
-            free(prompt);
+            counters->error++;
+            if (prompt)
+            {
+                free(prompt);
+            }
             return;
         }
         if (!get_answer(prompt))
@@ -274,6 +275,7 @@ static void recover_element(const struct dirent *namelist, const char *base_dir,
         if (lstat(src_path, &st) != 0)
         {
             fprintf(stderr, "Couldn't access %s: %s\n", src_path, strerror(errno));
+            counters->error++;
             return;
         }
     }
@@ -295,7 +297,7 @@ static void recover_element(const struct dirent *namelist, const char *base_dir,
             {
                 if (opts->action.verbose)
                 {
-                    printf("Recovered files: '%s'\n", src_suffix);
+                    printf("Recovered file: '%s'\n", src_suffix);
                 }
 
                 update_log_file(LOG_SUCCESS, CMD_RECOVER, src_path, new_dst_path, false);
