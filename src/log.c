@@ -30,7 +30,7 @@ ErrorCode handle_log(int argc, char **argv, int min_args)
     if (check_help(argc, argv[min_args]))
     {
         print_log_help();
-        return EC_CMD_HELP_FLAG;
+        return EC_SUCCESS;
     }
 
     // Parses CLI arguments
@@ -170,8 +170,8 @@ static LogOptions parse_log_opts(int argc, char **argv, int opt_start)
 static int parse_int(char *input)
 {
     char *ptr;
-    long num = strtol(input, &ptr, 10);
     errno = 0;
+    long num = strtol(input, &ptr, 10);
 
     if (errno == EINVAL || errno == ERANGE)
     {
