@@ -6,7 +6,6 @@ typedef enum
     EC_SUCCESS = 0,
 
     // Internal errors
-    EC_HELP_FLAG,
     EC_CMD_HELP_FLAG,
 
     // System errors
@@ -14,15 +13,24 @@ typedef enum
     EC_INVALID_COMMAND,
     EC_INVALID_COMMAND_ARGC,
     EC_INVALID_DIRECTORY,
+    EC_INVALID_FLAG,
     EC_INVALID_SORTER,
     EC_INVALID_SEARCHED_NAME,
+
+    // Function errors
     EC_SCANDIR_ERROR,
     EC_FOPEN_ERROR,
-    EC_LIST_FEATURE_ERROR,    
+    EC_REMOVE_ERROR,
+    EC_LIST_FEATURE_ERROR,
+    EC_MEMORY_ALLOCATION,
+
+    // Parse errors
     EC_PARSE_ERROR,
     EC_PARSE_ERROR_SIZE,
+    EC_PARSE_ERROR_TYPE,
     EC_PARSE_ERROR_UNSUPPORTED,
-    EC_MEMORY_ALLOCATION,
+
+    
     EC_MISSING_BACKUP_MARKER
 } ErrorCode;
 
