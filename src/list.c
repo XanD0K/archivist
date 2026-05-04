@@ -157,15 +157,15 @@ ErrorCode parse_list_opts(int argc, char **argv, int opt_start, void *opts_out)
         {"sort", required_argument, 0, 's'},
         {"recursive", no_argument, 0, 'R'},
         // Specific flags
-        {"ignore-case", no_argument, 0, 'i'},
         {"reverse", no_argument, 0, 'r'},
         {"dir-first", no_argument, 0, 'D'},
+        {"ignore-case", no_argument, 0, 'I'},
         {NULL, 0, NULL, 0}
     };
 
     int opt = 0;
     int long_index = 0;
-    char *short_opts = "aAhs:RirD";
+    char *short_opts = "aAhs:RrDI";
 
     optind = opt_start;
 
@@ -184,11 +184,6 @@ ErrorCode parse_list_opts(int argc, char **argv, int opt_start, void *opts_out)
                 break;
             }
             // ========= SPECIFIC =========
-            case 'i':  // ignore-case
-            {
-                opts->ignore_case = true;
-                break;
-            }
             case 'r':  // reverse
             {
                 opts->reverse = true;
@@ -197,6 +192,11 @@ ErrorCode parse_list_opts(int argc, char **argv, int opt_start, void *opts_out)
             case 'D':  // dir-first
             {
                 opts->dir_first = true;
+                break;
+            }
+            case 'I':  // ignore-case
+            {
+                opts->ignore_case = true;
                 break;
             }
             // ========== ERROR ===========

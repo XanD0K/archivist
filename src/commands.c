@@ -57,7 +57,7 @@ ErrorCode execute_command(int argc, char **argv)
         {"list", handle_list, 2, 12},
         {"log", handle_log, 2, 7},    
         {"move", handle_move, 3, 22},
-        {"recover", handle_recover, 3, 8},
+        {"recover", handle_recover, 3, 7},
         {"rename", handle_rename, 2, 21},        
         {"report", handle_report, 2, 11},
         {"search", handle_search, 2, 16},

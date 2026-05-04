@@ -156,13 +156,13 @@ ErrorCode parse_move_opts(int argc, char **argv, int opt_start, void *opts_out)
         {"verbose", no_argument, 0, 'v'},
         // Specific flags
         {"force", no_argument, 0, 'f'},
-        {"skip", no_argument, 0, 's'},
+        {"skip", no_argument, 0, 'S'},
         {NULL, 0, NULL, 0}
     };
 
     int opt = 0;
     int long_index = 0;
-    char *short_opts = "aARc:e:t:divfs";
+    char *short_opts = "aARc:e:t:divfS";
 
     optind = opt_start;
 
@@ -203,7 +203,7 @@ ErrorCode parse_move_opts(int argc, char **argv, int opt_start, void *opts_out)
                 opts->skip = false;
                 break;
             }
-            case 's':  // skip
+            case 'S':  // skip
             {
                 opts->force = false;
                 opts->skip = true;
@@ -234,6 +234,12 @@ ErrorCode parse_move_opts(int argc, char **argv, int opt_start, void *opts_out)
     if (opts->base.almost_all)
     {
         opts->base.all = false;
+    }
+
+    // Defines behaviour when already existed file on destination
+    if (opts->skip)
+    {
+        opts->force = false;
     }
 
     // Validates size
