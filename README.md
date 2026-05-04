@@ -69,6 +69,7 @@ This program works through CLI arguments, with no installation needed. Just run 
 
 ---
 
+
 #### Detailed Flag Behavior
 **`-a`, `--all`**
 - **Description:** displays all files and directories, including hidden ones (those starting with a `.`). It does not show the special entries `.` and `..`
