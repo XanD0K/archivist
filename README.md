@@ -4,7 +4,8 @@
 
 # Description
 This program is my final project for "[**CS50's Introduction to Computer Science**](https://pll.harvard.edu/course/cs50-introduction-computer-science)" course, from Harvard University.
-It was developed in C, and it is a directory and file manager, with the purpose of applying all knowledge and skills learned throughout the course.
+It is a directory and file manager, with the purpose of applying all knowledge and skills learned throughout the course.
+It was developed in C, in the WSL environment.
 
 ---
 
