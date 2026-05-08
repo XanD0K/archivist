@@ -3,9 +3,9 @@
 
 
 # Description
-This program is my final project for "[**CS50's Introduction to Computer Science**](https://pll.harvard.edu/course/cs50-introduction-computer-science)" course, from Harvard University.
-It is a directory and file manager, with the purpose of applying all knowledge and skills learned throughout the course.
-It was developed in C, in the WSL environment.
+
+Archivist is a powerful directory and file manager written in C, developed in the WSL environment.  
+It allows you to list directories, search for items, rename files, display directory trees, move and delete content, and perform incremental backups — all through a clean command-line interface.
 
 ---
 
@@ -413,15 +413,14 @@ This program works through CLI arguments, with no installation needed. Just run 
 
 
 ## Acknowledgments
-- Special thanks to the **CS50x team**, including Professor **David Malan** and the course staff, for their excellent teaching and support throughout "[**CS50's Introduction to Computer Science**](https://pll.harvard.edu/course/cs50-introduction-computer-science)" course.
-- I also used **Grok (xAI)** as a learning tool to assist during development of the program. It helped me with:
+I used **Grok (xAI)** as a learning tool to assist during development of the program. It helped me with:
   - Understanding Makefile
   - Debugging CLI arguments parser
   - Bitmasks and bitwise operators
   - CRC32 hashing implementation
   - Minor issues like choosing the best data type and functions to use
 
-  All core logic, architecture and implementation decisions were made by me. Grok was used strictly as a learning tool.
+All core logic, architecture and implementation decisions were made by me. Grok was used strictly as a learning tool.
 
 ---
 
