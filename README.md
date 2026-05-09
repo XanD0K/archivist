@@ -1,6 +1,4 @@
 # Archivist
-#### Video Demo: https://youtu.be/yQR0qsrmKzI
-
 
 # Description
 
