@@ -80,7 +80,6 @@
 - Improved CLI arguments parsers output by preventing code running with unsupported flag. First idea was to do a for loop and check if given flag is a supported flag for that feature. Grok (xAi) suggested to use bitmasks and bitwise operators to define wich flags are allowed in each feature. Proceeded with that second idea: gave each flag a bitmask and defined in each feature a `uint32_t` variable with all supported flags. Now, even though the feature has the unsupported flag in its structure, the bitwise operation inside general parsers will check the flag and display an error message if unsupported, improving UX
 - To implement `backup` and `recover` features, I first had the idea to use `FILE *` + `fread() | fwrite()` and copy bytes by bytes, which was the only way I knew how to do. Grok (xAi) suggested the usage of `copy_file_range()`, which was a better and more modern way of copying files. I follow that idea, which would be a great opportunity to learn a new way of handling files:
     - https://man7.org/linux/man-pages/man2/copy_file_range.2.html
-    - https://manual.cs50.io/2/copy_file_range
     - https://man7.org/linux/man-pages/man3/open.3p.html
     - https://man7.org/linux/man-pages/man3/close.3p.html
 - I first decided to do an incremental backup, which would only trigger for files that were modified. To do this, first checks file's existence on destination directory, than compare `st_mtim` and `st_size`, to check for changes. It still has a corner case that leads to orphan files: if the name of the file is modified, the program won't recognize this change, will create a new backup, and the first backed up file (the one with the old name) will have no relation to the file in the source directory. I could create a function that makes hashes for each file, and I could just compare the hashes from source and destination directories, but that will be something to do later
@@ -191,9 +190,7 @@
 - On pset5 'speller', among all implementations I've made, one of them was a Dynamic Hash Table, that doubled its size when a specific factor was reached. Used the same strategy to implement a Dynamic Array that holds every found extension
 - I first tried an array of pointers to the `Extension` struct (`Extension **ext`)
 - Then I decided to move to an array of `Extension` structs (`Extension *ext`), keeping code cleaner and memory allocation simpler
-- Fixed problems with memory leak specifically with `strdup()` and `asprintf()`. I didn't know I should `free()` strings returned by those functions:
-    - https://manual.cs50.io/3/strdup
-    - https://manual.cs50.io/3/asprintf
+- Fixed problems with memory leak specifically with `strdup()` and `asprintf()`. I didn't know I should `free()` strings returned by those functions
 - Fixed problems when comparing and making operations with different types: `size_t` with `int`, `const char *` with `char *`, `ssize_t` with `size_t`. Needs to pay more attention about the types I declare and the casts needed to make all operations work
 - `report` feature is fully implemented
 
